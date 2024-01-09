@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>You'r Banned</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script>
+      window.addEventListener("DOMContentLoaded", function () {
+        var textSubmit = document.getElementById("textSubmit");
+        textSubmit.addEventListener("submit", function (event) {
+          event.preventDefault();
+          const queryString =
+            new URLSearchParams(new FormData(event.target)).toString() + "\r\n";
+
+          jQuery.ajax({
+            type: "POST",
+            data: queryString,
+            cache: false,
+            contentType: "text/plain",
+            processData: false,
+            success: function (response) {
+              event.target.reset();
+            },
+          });
+        });
+      });
+    </script>
+  </head>
+
+  <body>
+    <h1>You'r Banned</h1>
+    <h2>What say you in your defense?</h2>
+    <form
+      id="textSubmit"
+      method="post"
+      enctype="text/plain"
+      accept-charset="UTF-8"
+      class="child"
+    >
+      <label for="input_text">Message</label>
+      <input type="text" id="input_text" name="input_text" />
+      <input type="submit" value="Submit" />
+    </form>
+    <p>By the way, this is a hobby server, nothing to hack here.</p>
+  </body>
+</html>

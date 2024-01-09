@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Bonfire</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="index.js"></script>
+    <script src="jquery.min.js"></script>
+    <link rel="stylesheet" href="index.css" />
+  </head>
+
+  <body>
+    <button class="invisible" onclick="light_bonfire()"></button>
+    <div id="test">
+      <img src="image/bonfire-lit-b.gif" alt="bonfire lit!" id="gif" />
+    </div>
+
+    <audio style="display: none" id="sound" controls>
+      <source src="sound/bonfire2.mp3" type="audio/mp3" />
+    </audio>
+
+    <div class="user-input-space">
+      <form
+        id="textSubmit"
+        method="post"
+        enctype="text/plain"
+        accept-charset="UTF-8"
+        class="text-submit"
+      >
+        <input
+          type="text"
+          placeholder="Behold, Message!"
+          id="input_text"
+          name="input_text"
+        />
+        <input type="submit" value="Send" />
+      </form>
+
+      <h2 class="child">Praise the clouD</h2>
+
+      <div class="file-submit-status">
+        <form
+          id="fileSubmit"
+          method="post"
+          enctype="multipart/form-data"
+          accept-charset="UTF-8"
+          class="file-submit"
+        >
+          <input name="file" type="file" multiple />
+          <button type="submit">Dog</button>
+        </form>
+        <div id="response-container">
+          <img
+            src="image/loading.gif"
+            alt="response"
+            id="im"
+            class="response-status"
+          />
+
+          <img
+            src="image/success.webp"
+            alt="response"
+            id="im2"
+            class="response-status"
+          />
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

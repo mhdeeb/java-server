@@ -1,0 +1,59 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "java (build)",
+			"paths": [
+				"${workspace}"
+			],
+			"isFullBuild": true,
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"problemMatcher": [],
+			"label": "java (build): Build Workspace",
+			"detail": "$(tools) Build all the Java projects in workspace."
+		},{
+			"type": "java (buildArtifact)",
+			"mainClass": "org.mhdeeb.server.Server",
+			"targetPath": "bin/${workspaceFolderBasename}.jar",
+			"elements": [
+				"${compileOutput}",
+				"${dependencies}"
+			],
+			"problemMatcher": [],
+			"label": "java_buildArtifact: java-server",
+			"group": "build",
+			"dependsOn": [
+				"java (build): Build Workspace"
+			],
+			"dependsOrder": "sequence"
+		},{
+			"type": "shell",
+			"command": "cp -r -Force src/main/resource/* bin/",
+			"problemMatcher": [],
+			"label": "copy_resources: java-server",
+			"group": "build",
+			"dependsOn": [
+				"java_buildArtifact: java-server"
+			],
+			"dependsOrder": "sequence"
+		},{
+			"type": "shell",
+			"command": "cd ${workspaceFolder}/bin/ && ./run.bat ${workspaceFolderBasename}.jar",
+			"args": [],
+			"problemMatcher": [],
+			"label": "java_runArtifact: java-server",
+			"group": {
+				"kind": "test",
+				"isDefault": true
+			},
+			"dependsOn": [
+				"copy_resources: java-server"
+			],
+			"dependsOrder": "sequence"
+			 
+		},
+	]
+}

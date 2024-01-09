@@ -1,0 +1,78 @@
+@font-face {
+  font-family: DarkSoulsFont;
+  src: url(OptimusPrinceps.ttf);
+}
+
+body {
+  background-color: black;
+  background-image: url("image/bonfire.gif");
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  background-size: 75%;
+  background-position: center 200px;
+  animation: fade-in 300ms;
+}
+
+.invisible {
+  color: transparent;
+  background-color: transparent;
+  border-color: transparent;
+  cursor: pointer;
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  width: 5%;
+  height: 50%;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+#test {
+  position: fixed;
+  left: 50%;
+  top: 20%;
+  transform: translate(-80%, -40%);
+  z-index: -1;
+  width: 300px;
+}
+
+#gif {
+  display: none;
+  width: 200%;
+}
+
+.user-input-space {
+  background-color: rgb(111, 118, 134);
+  border-radius: 10px;
+  margin: 100px;
+  border-color: #f6aa3b;
+  border-style: solid;
+  font-family: DarkSoulsFont, sans-serif;
+  display: inline-block;
+  padding: 10px;
+}
+
+.file-submit-status {
+  display: flex;
+  text-overflow: ellipsis;
+  gap: 10px;
+}
+
+#response-container {
+  min-height: 20px;
+  min-width: 20px;
+}
+
+.response-status {
+  display: none;
+  max-height: 20px;
+  max-width: 20px;
+}
