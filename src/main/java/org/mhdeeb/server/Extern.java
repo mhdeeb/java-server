@@ -25,4 +25,8 @@ public class Extern {
     public static String getPassword() {
         return System.getenv("JSERVER_CERT_PASSWORD");
     }
+
+    public static File getIPLookupFile() {
+        return new File(System.getenv("JSERVER_IP_LOOKUP"));
+    }
 }

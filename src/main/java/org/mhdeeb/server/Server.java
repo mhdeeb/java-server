@@ -43,6 +43,8 @@ import javax.swing.text.html.parser.Entity;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 public class Server {
 	private static final int LISTENING_PORT = 80;
 	private static final int LISTENING_PORT_S = 443;
@@ -74,6 +76,8 @@ public class Server {
 	private static final String KEY_STORE_PWD = Extern.getPassword();
 
 	private static final ArrayList<String> BLACK_LIST = (ArrayList<String>) Extern.getBlackList();
+
+	private static final ObjectMapper mapper = new ObjectMapper();
 
 	private static final Logger logger = LogManager.getLogger(Server.class);
 
@@ -155,6 +159,7 @@ public class Server {
 			case "gif" -> "image/gif";
 			case "ico" -> "image/x-icon";
 			case "svg" -> "image/svg+xml";
+			case "ttf" -> "font/ttf";
 			case "webp" -> "image/webp";
 			case "mp3" -> "audio/mpeg";
 			case "mp4" -> "video/mp4";
@@ -427,7 +432,7 @@ public class Server {
 				return;
 			}
 
-			String ipLookUp = Util.getIPLookUp(ip);
+			String ipLookUp = Util.getIPLookUp(ip, mapper);
 			logger.info("{} connected from {}", ip, ipLookUp);
 
 			BufferedInputStream in = new BufferedInputStream(connection.getInputStream());

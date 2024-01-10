@@ -1,18 +1,40 @@
 package org.mhdeeb.server;
 
 import java.io.BufferedInputStream;
-import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
+
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 interface ByteTransformer<T> {
     public T transform(byte c);
 }
 
 public class Util {
+    public static String extractData(JsonNode root) {
+        JsonNode error = root.path("error");
+
+        if (!error.isMissingNode() && error.asBoolean())
+            return "(Unknown)";
+
+        String name = root.path("country_name").asText();
+
+        String org = root.path("org").asText();
+
+        if (name.isEmpty() && org.isEmpty())
+            return null;
+
+        return name + " (" + org + ")";
+    }
+
     @SuppressWarnings("unused")
     public static void printAll(BufferedInputStream in) throws IOException {
         char c;
@@ -21,27 +43,65 @@ public class Util {
         }
     }
 
-    public static String getIPLookUp(String ip) {
+    public static String getIPLookupData(String ip, ObjectMapper mapper) {
         try {
+            File file = Extern.getIPLookupFile();
+
+            JsonNode root = mapper.readTree(file);
+
+            root = root.path(ip);
+
+            return extractData(root);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public static void saveIP(JsonNode root, ObjectMapper mapper) throws IOException {
+        File file = Extern.getIPLookupFile();
+
+        String ip = root.path("ip").asText();
+
+        ((ObjectNode) root).remove("ip");
+
+        JsonNode fileRoot = mapper.readTree(file);
+
+        try (FileWriter out = new FileWriter(file)) {
+            if (fileRoot.isNull() || fileRoot.isMissingNode()) {
+                ObjectNode newRoot = mapper.createObjectNode();
+                newRoot.set(ip, root);
+                mapper.writeValue(out, newRoot);
+            } else {
+                ((ObjectNode) fileRoot).set(ip, root);
+                mapper.writeValue(out, fileRoot);
+            }
+        }
+    }
+
+    public static String getIPLookUp(String ip, ObjectMapper mapper) {
+
+        String result = getIPLookupData(ip, mapper);
+
+        if (result != null)
+            return result;
+
+        try {
+
             URI uri = new URI("https://ipapi.co/" + ip + "/json/");
 
             URL api = uri.toURL();
 
             URLConnection yc = api.openConnection();
-            BufferedReader in = new BufferedReader(
-                    new InputStreamReader(
-                            yc.getInputStream()));
 
-            String inputLine;
-            String text = "";
+            JsonFactory factory = mapper.getFactory();
 
-            while ((inputLine = in.readLine()) != null)
-                text += inputLine + "\n";
+            JsonParser jsonParser = factory.createParser(yc.getInputStream());
 
-            in.close();
+            JsonNode root = mapper.readTree(jsonParser);
 
-            return (text.split("\"country_name\": \"")[1]).split("\"")[0].trim() + " ("
-                    + (text.split("\"org\": \"")[1]).split("\"")[0].trim() + ")";
+            saveIP(root, mapper);
+
+            return extractData(root);
         } catch (Exception e) {
             return "Unknown";
         }

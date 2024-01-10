@@ -1,6 +1,11 @@
 {
 	"version": "2.0.0",
-	"tasks": [
+	"tasks": [{
+			"type": "shell",
+			"command": "cmd",
+			"args": [],
+			"label": "change_shell: java-server"
+		},
 		{
 			"type": "java (build)",
 			"paths": [
@@ -41,7 +46,7 @@
 			"dependsOrder": "sequence"
 		},{
 			"type": "shell",
-			"command": "cd ${workspaceFolder}/bin/ && ./run.bat ${workspaceFolderBasename}.jar",
+			"command": "cd bin/ && ./run.bat ${workspaceFolderBasename}.jar",
 			"args": [],
 			"problemMatcher": [],
 			"label": "java_runArtifact: java-server",
@@ -54,6 +59,16 @@
 			],
 			"dependsOrder": "sequence"
 			 
-		},
+		}, {
+			"type": "shell",
+			"command": "cd bin/ && ./debug.bat ${workspaceFolderBasename}.jar",
+			"args": [],
+			"problemMatcher": [],
+			"label": "java_debugArtifact: java-server",
+			"dependsOn": [
+				"copy_resources: java-server"
+			],
+			"dependsOrder": "sequence"
+		}
 	]
 }
