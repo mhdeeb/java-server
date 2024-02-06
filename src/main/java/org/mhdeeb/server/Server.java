@@ -10,12 +10,11 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.Socket;
-import java.net.SocketAddress;
-import java.net.http.HttpHeaders;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Paths;
 import java.security.KeyManagementException;
 import java.security.KeyStore;
@@ -67,16 +66,9 @@ public class Server {
 
 	private static final String DEFAULT_HTTP_SPEC = ALLOWED_HTTP[0];
 
-	private static final String WWW_DIRECTORY = "WWW/";
-	private static final String ERROR_DIRECTORY = WWW_DIRECTORY + "error/";
-	private static final String ROOT_DIRECTORY = WWW_DIRECTORY + "content/";
-	@SuppressWarnings("unused")
-	private static final String IMAGE_DIRECTORY = ROOT_DIRECTORY + "image/";
-	private static final String UPLOAD_DIRECTORY = ROOT_DIRECTORY + "upload/";
+	private static Path resource_directory = Paths.get("./");
 
 	private static final String CRLF = "\r\n";
-	private static final String TRUST_STORE_NAME = "cert.p12";
-	private static final String KEY_STORE_NAME = "cert.p12";
 
 	private static final String TRUST_STORE_PWD = Extern.getPassword();
 	private static final String KEY_STORE_PWD = Extern.getPassword();
@@ -142,6 +134,38 @@ public class Server {
 
 			return response.toString();
 		}
+	}
+
+	private static Path getResourceDirectory() {
+		return resource_directory;
+	}
+
+	private static Path getWWWDirectory() {
+		return Paths.get(getResourceDirectory().toString(), "WWW");
+	}
+
+	private static Path getErrorDirectory() {
+		return Paths.get(getWWWDirectory().toString(), "error");
+	}
+
+	private static Path getRootDirectory() {
+		return Paths.get(getWWWDirectory().toString(), "content");
+	}
+
+	private static Path getImageDirectory() {
+		return Paths.get(getRootDirectory().toString(), "image");
+	}
+
+	private static Path getUploadDirectory() {
+		return Paths.get(getRootDirectory().toString(), "upload");
+	}
+
+	private static Path getTrustStorePath() {
+		return Paths.get(getWWWDirectory().toString(), "cert.p12");
+	}
+
+	private static Path getKeyStorePath() {
+		return Paths.get(getWWWDirectory().toString(), "cert.p12");
 	}
 
 	private static String getMimeType(String fileName) {
@@ -295,20 +319,20 @@ public class Server {
 	}
 
 	static void sendErrorResponse(int errorCode, OutputStream socketOut) throws IOException {
-		File file = new File(ERROR_DIRECTORY + errorCode + ".html");
+		File file = new File(Paths.get(getErrorDirectory().toString(), errorCode + ".html").toString());
 
 		if (!file.exists()) {
-			file = new File(ERROR_DIRECTORY + DEFAULT_ERROR_CODE + ".html");
+			file = new File(Paths.get(getErrorDirectory().toString(), DEFAULT_ERROR_CODE + ".html").toString());
 		}
 
 		send(errorCode, socketOut, file);
 	}
 
 	private static void sendBanResponse(Socket connection) throws IOException {
-		File file = new File(ERROR_DIRECTORY + "Ban.html");
+		File file = new File(Paths.get(getErrorDirectory().toString(), "Ban.html").toString());
 
 		if (!file.exists()) {
-			file = new File(ERROR_DIRECTORY + DEFAULT_ERROR_CODE + ".html");
+			file = new File(Paths.get(getErrorDirectory().toString(), DEFAULT_ERROR_CODE + ".html").toString());
 		}
 
 		send(200, connection.getOutputStream(), file);
@@ -356,8 +380,8 @@ public class Server {
 	}
 
 	private static SSLServerSocketFactory getSocketFactory() throws IOException {
-		try (InputStream tstore = new FileInputStream(WWW_DIRECTORY + TRUST_STORE_NAME);
-				InputStream kstore = new FileInputStream(WWW_DIRECTORY + KEY_STORE_NAME);) {
+		try (InputStream tstore = new FileInputStream(getTrustStorePath().toString());
+				InputStream kstore = new FileInputStream(getKeyStorePath().toString());) {
 			KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
 			trustStore.load(tstore, TRUST_STORE_PWD.toCharArray());
 			TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
@@ -405,6 +429,10 @@ public class Server {
 		cache.setRequired(false);
 		options.addOption(cache);
 
+		Option resource = new Option("r", "resource", true, "resource directory");
+		resource.setRequired(false);
+		options.addOption(resource);
+
 		CommandLineParser parser = new DefaultParser();
 		HelpFormatter formatter = new HelpFormatter();
 		CommandLine cmd = null;
@@ -418,12 +446,22 @@ public class Server {
 		}
 
 		String cacheTime = cmd.getOptionValue("cache");
+		String resourceDirectory = cmd.getOptionValue("resource");
 
 		if (cacheTime != null) {
 			try {
 				CACHE_TIME = Integer.parseInt(cacheTime);
 			} catch (NumberFormatException e) {
-				logger.error("Invalid cache time.");
+				logger.fatal("Invalid cache time.");
+				System.exit(1);
+			}
+		}
+
+		if (resourceDirectory != null) {
+			try {
+				resource_directory = Paths.get(resourceDirectory);
+			} catch (InvalidPathException e) {
+				logger.fatal("Invalid resource directory.");
 				System.exit(1);
 			}
 		}
@@ -511,7 +549,7 @@ public class Server {
 
 			if (requestType.equals("GET")) {
 
-				Path path = Paths.get(ROOT_DIRECTORY + requestPath);
+				Path path = Paths.get(getRootDirectory().toString(), requestPath);
 
 				if (!Files.exists(path)) {
 					sendErrorResponse(404, out);
@@ -616,7 +654,8 @@ public class Server {
 						}
 
 						try {
-							FileOutputStream fileOutputStream = new FileOutputStream(UPLOAD_DIRECTORY + fileName);
+							FileOutputStream fileOutputStream = new FileOutputStream(
+									Paths.get(getUploadDirectory().toString(), fileName).toString());
 
 							readLine(in);
 

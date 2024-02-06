@@ -69,6 +69,16 @@
 				"copy_resources: java-server"
 			],
 			"dependsOrder": "sequence"
-		}
+		},{
+			"type": "shell",
+			"command": "cd bin/ && ./dev.bat ${workspaceFolderBasename}.jar",
+			"args": [],
+			"problemMatcher": [],
+			"label": "java_devArtifact: java-server",
+			"dependsOn": [
+				"copy_resources: java-server"
+			],
+			"dependsOrder": "sequence"
+		}, 
 	]
 }
