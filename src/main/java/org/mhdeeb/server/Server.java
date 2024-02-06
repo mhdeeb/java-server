@@ -38,8 +38,14 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLServerSocket;
 import javax.net.ssl.SSLServerSocketFactory;
 import javax.net.ssl.TrustManagerFactory;
-import javax.swing.text.html.parser.Entity;
 
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -51,7 +57,7 @@ public class Server {
 
 	private static final int TIMEOUT = 15000;
 
-	private static final int CACHE_TIME = 600;
+	private static int CACHE_TIME = 600;
 
 	private static final int DEFAULT_ERROR_CODE = 501;
 
@@ -393,6 +399,34 @@ public class Server {
 	}
 
 	public static void main(String[] args) {
+		Options options = new Options();
+
+		Option cache = new Option("c", "cache", true, "cache time in seconds");
+		cache.setRequired(false);
+		options.addOption(cache);
+
+		CommandLineParser parser = new DefaultParser();
+		HelpFormatter formatter = new HelpFormatter();
+		CommandLine cmd = null;
+
+		try {
+			cmd = parser.parse(options, args);
+		} catch (ParseException e) {
+			logger.error(e.getStackTrace());
+			formatter.printHelp("utility-name", options);
+			System.exit(1);
+		}
+
+		String cacheTime = cmd.getOptionValue("cache");
+
+		if (cacheTime != null) {
+			try {
+				CACHE_TIME = Integer.parseInt(cacheTime);
+			} catch (NumberFormatException e) {
+				logger.error("Invalid cache time.");
+				System.exit(1);
+			}
+		}
 
 		try (
 				ServerSocket serverSocket = new ServerSocket(LISTENING_PORT);
