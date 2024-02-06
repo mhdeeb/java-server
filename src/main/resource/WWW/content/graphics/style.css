@@ -1,0 +1,12 @@
+div {
+  display: grid;
+  justify-content: center;
+}
+
+#canvas {
+  border: 3px solid black;
+  border-radius: 5px;
+  margin: 10px;
+  width: 600px;
+  height: auto;
+}
