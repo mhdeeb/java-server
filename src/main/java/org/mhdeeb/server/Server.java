@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.TimeZone;
 import java.util.Map.Entry;
@@ -154,6 +155,10 @@ public class Server {
 
 	private static Path getImageDirectory() {
 		return Paths.get(getRootDirectory().toString(), "image");
+	}
+
+	private static Path getImage(String name) {
+		return Paths.get(getImageDirectory().toString(), name);
 	}
 
 	private static Path getUploadDirectory() {
@@ -338,6 +343,123 @@ public class Server {
 		send(200, connection.getOutputStream(), file);
 	}
 
+	private static void sendDirectoryListing(OutputStream out, File directory) throws IOException {
+		Path relativeDirectoryPath = getRootDirectory().relativize(directory.toPath());
+		String relativeDirectoryImageString = "/" + getRootDirectory().relativize(getImage("folder.svg")).toString()
+				.replace("\\", "/");
+		String relativeFileImageString = "/"
+				+ getRootDirectory().relativize(getImage("file.svg")).toString().replace("\\",
+						"/");
+		String relativeParentImageString = "/" + getRootDirectory().relativize(getImage("undo.svg")).toString()
+				.replace("\\", "/");
+
+		String relativeParentImageHTML = "<td valign=\"top\">\n<img src=\"" + relativeParentImageString
+				+ "\" alt=\"Parent Directory\" width=\"20\" height=\"22\">\n</td>\n";
+
+		String relativeFileImageHTML = "<td valign=\"top\">\n<img src=\"" + relativeFileImageString
+				+ "\" alt=\"Parent Directory\" width=\"20\" height=\"22\">\n</td>\n";
+
+		String relativeDirectoryImageHTML = "<td valign=\"top\">\n<img src=\"" + relativeDirectoryImageString
+				+ "\" alt=\"Parent Directory\" width=\"20\" height=\"22\">\n</td>\n";
+
+		PrintWriter writer = new PrintWriter(out);
+
+		ResponseHeader responseHeader = new ResponseHeader();
+
+		responseHeader.setSpec(DEFAULT_HTTP_SPEC);
+		responseHeader.setStatusCode(200);
+
+		responseHeader.add("Connection", "close");
+		responseHeader.add("Expires", getExpireDate(Calendar.SECOND, CACHE_TIME));
+
+		writer.write(responseHeader.toString());
+
+		writer.write("<!DOCTYPE html>\n");
+
+		writer.write("<html>\n");
+
+		writer.write("<head>\n");
+
+		writer.write(
+				"<title>Index of /" + relativeDirectoryPath.toString().replace("\\", "/") + "</title>\n");
+
+		writer.write("</head>\n");
+
+		writer.write("<body>\n");
+
+		writer.write("<h1>Index of /" + relativeDirectoryPath.toString().replace("\\", "/") + "</h1>\n");
+
+		writer.write("<table>\n");
+
+		writer.write("<tbody>\n");
+
+		writer.write("<tr>\n");
+
+		writer.write(relativeParentImageHTML);
+
+		writer.write("<td>\n<a href=\"/"
+				+ (relativeDirectoryPath.getParent() == null ? "" : relativeDirectoryPath.getParent())
+				+ "\">../</a>\n</td>\n");
+
+		writer.write("</tr>\n");
+
+		File[] directories = directory.listFiles(File::isDirectory);
+		if (directories != null) {
+			for (File d : directories) {
+				Path relative = getRootDirectory().relativize(d.toPath());
+				writer.write("<tr>\n");
+
+				writer.write(relativeDirectoryImageHTML);
+
+				writer.write("<td>\n<a href=\"/"
+						+ relative
+						+ "\">" + relative.getFileName() + "/</a>\n</td>\n");
+
+				writer.write("</tr>\n");
+			}
+		}
+
+		File[] files = directory.listFiles(File::isFile);
+		if (files != null) {
+			for (File file : files) {
+				Path relative = getRootDirectory().relativize(file.toPath());
+				writer.write("<tr>\n");
+
+				writer.write(relativeFileImageHTML);
+
+				writer.write("<td>\n<a href=\"/"
+						+ relative
+						+ "\">" + relative.getFileName() + "</a>\n</td>\n");
+
+				writer.write("</tr>\n");
+			}
+		}
+
+		writer.write("</tbody>\n");
+
+		writer.write("</table>\n");
+
+		writer.write("</body>\n");
+
+		writer.write("</html>\n");
+
+		writer.flush();
+	}
+
+	private static void parseQuery(LinkedHashMap<String, String> map, String query) {
+		String[] tokens = query.split("&");
+
+		for (String token : tokens) {
+			String[] pair = token.split("=");
+
+			if (pair.length == 1) {
+				map.put(pair[0], "");
+			} else {
+				map.put(pair[0], pair[1]);
+			}
+		}
+	}
+
 	static String read(BufferedInputStream in, String delimiter) throws IOException {
 		StringBuilder request = new StringBuilder();
 
@@ -513,6 +635,7 @@ public class Server {
 			String requestType;
 			String requestPath;
 			String requestProtocol;
+			LinkedHashMap<String, String> query = new LinkedHashMap<>();
 
 			String line = readLine(in);
 
@@ -525,9 +648,19 @@ public class Server {
 				return;
 			}
 
+			String[] requestPathTokens = tokens[1].split("\\?");
+
 			requestType = tokens[0];
-			requestPath = tokens[1];
+			requestPath = requestPathTokens[0];
 			requestProtocol = tokens[2];
+
+			if (requestPathTokens.length > 1) {
+				parseQuery(query, requestPathTokens[1]);
+
+				for (Entry<String, String> entry : query.entrySet()) {
+					logger.info("{}:: {} = {}", ip, entry.getKey(), entry.getValue());
+				}
+			}
 
 			logger.info("{}:: {} {} {}", ip, requestType, requestPath,
 					requestProtocol);
@@ -560,7 +693,13 @@ public class Server {
 
 				try {
 					if (file.isDirectory()) {
-						send(200, out, new File(file + "/index.html"));
+						Path indexFile = Paths.get(file.toString(), "index.html");
+						if (Files.exists(indexFile)) {
+							file = new File(indexFile.toString());
+							send(200, out, file);
+						} else {
+							sendDirectoryListing(out, file);
+						}
 					} else if (header.containsKey("Range")) {
 						String[] range = header.get("Range").split("=");
 
@@ -624,15 +763,10 @@ public class Server {
 
 				if (contentType[0].equals("text/plain")) {
 					if (!(line = readLine(in)).isEmpty()) {
-						String[] data = line.split("&");
+						parseQuery(query, line);
 
-						for (String d : data) {
-							tokens = d.split("=");
-
-							if (tokens.length == 1)
-								logger.info("{}:: {}: \"\"", ip, tokens[0]);
-							else
-								logger.info("{}:: {}: {}", ip, tokens[0], tokens[1]);
+						for (Entry<String, String> entry : query.entrySet()) {
+							logger.info("{}:: {} = {}", ip, entry.getKey(), entry.getValue());
 						}
 					}
 				} else if (contentType[0].equals("multipart/form-data")) {
