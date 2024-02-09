@@ -1,11 +1,11 @@
 @font-face {
   font-family: DarkSoulsFont;
-  src: url(OptimusPrinceps.ttf);
+  src: url(../fonts/OptimusPrinceps.ttf);
 }
 
 body {
   background-color: black;
-  background-image: url("image/bonfire.gif");
+  background-image: url("../image/bonfire.gif");
   background-repeat: no-repeat;
   background-attachment: fixed;
   background-size: 75%;
@@ -33,6 +33,10 @@ body {
   to {
     opacity: 1;
   }
+}
+
+#sound {
+  display: none;
 }
 
 #test {

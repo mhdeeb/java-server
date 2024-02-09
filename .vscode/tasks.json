@@ -1,21 +1,11 @@
 {
 	"version": "2.0.0",
 	"tasks": [{
-			"type": "shell",
-			"command": "cmd",
-			"args": [],
-			"label": "change_shell: java-server"
-		},
-		{
 			"type": "java (build)",
 			"paths": [
 				"${workspace}"
 			],
 			"isFullBuild": true,
-			"group": {
-				"kind": "build",
-				"isDefault": true
-			},
 			"problemMatcher": [],
 			"label": "java (build): Build Workspace",
 			"detail": "$(tools) Build all the Java projects in workspace."
@@ -75,8 +65,12 @@
 			"args": [],
 			"problemMatcher": [],
 			"label": "java_devArtifact: java-server",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
 			"dependsOn": [
-				"copy_resources: java-server"
+				"java_buildArtifact: java-server"
 			],
 			"dependsOrder": "sequence"
 		}, 

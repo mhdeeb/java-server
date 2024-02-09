@@ -30,6 +30,7 @@ import java.util.Calendar;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.TimeZone;
 import java.util.Map.Entry;
 
@@ -57,7 +58,7 @@ public class Server {
 
 	private static final int TIMEOUT = 15000;
 
-	private static int CACHE_TIME = 600;
+	private static int cacheTime = 600;
 
 	private static final int DEFAULT_ERROR_CODE = 501;
 
@@ -67,7 +68,7 @@ public class Server {
 
 	private static final String DEFAULT_HTTP_SPEC = ALLOWED_HTTP[0];
 
-	private static Path resource_directory = Paths.get("./");
+	private static Path resourceDirectory = Paths.get("./");
 
 	private static final String CRLF = "\r\n";
 
@@ -91,6 +92,7 @@ public class Server {
 				case 200 -> "OK";
 				case 204 -> "No Content";
 				case 206 -> "Partial Content";
+				case 304 -> "Not Modified";
 				case 400 -> "Bad Request";
 				case 403 -> "Forbidden";
 				case 404 -> "Not Found";
@@ -138,7 +140,7 @@ public class Server {
 	}
 
 	private static Path getResourceDirectory() {
-		return resource_directory;
+		return resourceDirectory;
 	}
 
 	private static Path getWWWDirectory() {
@@ -211,6 +213,15 @@ public class Server {
 		};
 	}
 
+	private static boolean isMimeText(String mimeType) {
+		return switch (mimeType) {
+			case "text/plain", "text/html", "text/css", "text/javascript", "text/x-java", "image/svg+xml",
+					"application/xml", "application/xhtml+xml" ->
+				true;
+			default -> false;
+		};
+	}
+
 	private static String getExpireDate(int field, int amount) {
 		Calendar calendar = Calendar.getInstance();
 
@@ -223,7 +234,13 @@ public class Server {
 		return dateFormat.format(calendar.getTime());
 	}
 
-	private static void send(int statusCode, OutputStream socketOut, File file) throws IOException {
+	private static String getETag(File file) {
+		return Long.toHexString(file.lastModified()) + "-" + Long.toHexString(file.length()) + "-"
+				+ Long.toHexString(file.hashCode());
+	}
+
+	private static void send(int statusCode, OutputStream socketOut, File file, String etag)
+			throws IOException {
 		PrintWriter out = new PrintWriter(socketOut);
 
 		ResponseHeader responseHeader = new ResponseHeader();
@@ -232,8 +249,14 @@ public class Server {
 		responseHeader.setStatusCode(statusCode);
 
 		responseHeader.add("Connection", "close");
-		responseHeader.add("Expires", getExpireDate(Calendar.SECOND, CACHE_TIME));
-		responseHeader.add("Content-Type", getMimeType(file.getName()));
+		responseHeader.add("Expires", getExpireDate(Calendar.SECOND, cacheTime));
+		responseHeader.add("Cache-Control", "max-age=" + cacheTime);
+		if (etag != null)
+			responseHeader.add("ETag", etag);
+		else
+			responseHeader.add("ETag", getETag(file));
+		String mimeType = getMimeType(file.getName());
+		responseHeader.add("Content-Type", mimeType + (isMimeText(mimeType) ? "; charset=utf-8" : ""));
 		responseHeader.add("Accept-Ranges", "bytes");
 		responseHeader.add("Content-Length", file.length());
 
@@ -269,7 +292,9 @@ public class Server {
 		responseHeader.setStatusCode(206);
 
 		responseHeader.add("Connection", "close");
-		responseHeader.add("Expires", getExpireDate(Calendar.SECOND, CACHE_TIME));
+		responseHeader.add("Expires", getExpireDate(Calendar.SECOND, cacheTime));
+		responseHeader.add("Cache-Control", "max-age=" + cacheTime);
+		responseHeader.add("ETag", getETag(file));
 		responseHeader.add("Content-Type", getMimeType(file.getName()));
 		responseHeader.add("Content-Length", len);
 		responseHeader.add("Content-Range", String.format("bytes %d-%d/%d", start, end, fileSize));
@@ -282,7 +307,7 @@ public class Server {
 	}
 
 	private static void sendFileChunked(File file, OutputStream socketOut, long offset, long len) throws IOException {
-		OutputStream out = new BufferedOutputStream(socketOut);
+		BufferedOutputStream out = new BufferedOutputStream(socketOut);
 
 		try (BufferedInputStream in = new BufferedInputStream(new FileInputStream(file), MAX_BUFFER_SIZE)) {
 			long skipped = in.skip(offset);
@@ -304,7 +329,7 @@ public class Server {
 	}
 
 	private static void sendFile(File file, OutputStream socketOut) throws IOException {
-		OutputStream out = new BufferedOutputStream(socketOut);
+		BufferedOutputStream out = new BufferedOutputStream(socketOut);
 
 		try (BufferedInputStream in = new BufferedInputStream(new FileInputStream(file), MAX_BUFFER_SIZE)) {
 
@@ -323,6 +348,19 @@ public class Server {
 		socketOut.write(String.format("%s 204 No Content%s%s", DEFAULT_HTTP_SPEC, CRLF, CRLF).getBytes());
 	}
 
+	static void sendNotModifiedResponse(OutputStream socketOut, String etag) throws IOException {
+		ResponseHeader responseHeader = new ResponseHeader();
+
+		responseHeader.setSpec(DEFAULT_HTTP_SPEC);
+		responseHeader.setStatusCode(304);
+
+		responseHeader.add("Expires", getExpireDate(Calendar.SECOND, cacheTime));
+		responseHeader.add("Cache-Control", "max-age=" + cacheTime);
+		responseHeader.add("ETag", etag);
+
+		socketOut.write(responseHeader.toString().getBytes());
+	}
+
 	static void sendErrorResponse(int errorCode, OutputStream socketOut) throws IOException {
 		File file = new File(Paths.get(getErrorDirectory().toString(), errorCode + ".html").toString());
 
@@ -330,7 +368,7 @@ public class Server {
 			file = new File(Paths.get(getErrorDirectory().toString(), DEFAULT_ERROR_CODE + ".html").toString());
 		}
 
-		send(errorCode, socketOut, file);
+		send(errorCode, socketOut, file, null);
 	}
 
 	private static void sendBanResponse(Socket connection) throws IOException {
@@ -340,11 +378,21 @@ public class Server {
 			file = new File(Paths.get(getErrorDirectory().toString(), DEFAULT_ERROR_CODE + ".html").toString());
 		}
 
-		send(200, connection.getOutputStream(), file);
+		send(200, connection.getOutputStream(), file, null);
 	}
 
 	private static void sendDirectoryListing(OutputStream out, File directory) throws IOException {
-		Path relativeDirectoryPath = getRootDirectory().relativize(directory.toPath());
+		PrintWriter writer = new PrintWriter(out);
+
+		ResponseHeader responseHeader = new ResponseHeader();
+
+		responseHeader.setSpec(DEFAULT_HTTP_SPEC);
+		responseHeader.setStatusCode(200);
+		responseHeader.add("Connection", "close");
+		responseHeader.add("content-type", "text/html; charset=utf-8");
+
+		StringBuilder response = new StringBuilder();
+
 		String relativeDirectoryImageString = "/" + getRootDirectory().relativize(getImage("folder.svg")).toString()
 				.replace("\\", "/");
 		String relativeFileImageString = "/"
@@ -362,60 +410,40 @@ public class Server {
 		String relativeDirectoryImageHTML = "<td valign=\"top\">\n<img src=\"" + relativeDirectoryImageString
 				+ "\" alt=\"Parent Directory\" width=\"20\" height=\"22\">\n</td>\n";
 
-		PrintWriter writer = new PrintWriter(out);
+		Path relativeDirectoryPath = getRootDirectory().relativize(directory.toPath());
+		String relativeDirectoryString = relativeDirectoryPath.toString().replace("\\", "/");
 
-		ResponseHeader responseHeader = new ResponseHeader();
+		response.append(
+				"<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\" />\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n<title>Index of /");
+		response.append(relativeDirectoryString);
+		response.append("</title>\n</head>\n<body>\n<h1>Index of /");
+		response.append(relativeDirectoryString);
+		response.append("</h1>\n<table>\n<tbody>\n");
 
-		responseHeader.setSpec(DEFAULT_HTTP_SPEC);
-		responseHeader.setStatusCode(200);
+		if (relativeDirectoryString.length() > 0) {
+			response.append("<tr>\n");
+			response.append("<tr>\n");
 
-		responseHeader.add("Connection", "close");
-		responseHeader.add("Expires", getExpireDate(Calendar.SECOND, CACHE_TIME));
+			response.append("<tr>\n");
 
-		writer.write(responseHeader.toString());
-
-		writer.write("<!DOCTYPE html>\n");
-
-		writer.write("<html>\n");
-
-		writer.write("<head>\n");
-
-		writer.write(
-				"<title>Index of /" + relativeDirectoryPath.toString().replace("\\", "/") + "</title>\n");
-
-		writer.write("</head>\n");
-
-		writer.write("<body>\n");
-
-		writer.write("<h1>Index of /" + relativeDirectoryPath.toString().replace("\\", "/") + "</h1>\n");
-
-		writer.write("<table>\n");
-
-		writer.write("<tbody>\n");
-
-		writer.write("<tr>\n");
-
-		writer.write(relativeParentImageHTML);
-
-		writer.write("<td>\n<a href=\"/"
-				+ (relativeDirectoryPath.getParent() == null ? "" : relativeDirectoryPath.getParent())
-				+ "\">../</a>\n</td>\n");
-
-		writer.write("</tr>\n");
+			response.append(relativeParentImageHTML);
+			response.append("<td>\n<a href=\"/");
+			Path relativeDirectoryParentPath = relativeDirectoryPath.getParent();
+			response.append((relativeDirectoryParentPath == null ? "" : relativeDirectoryParentPath).toString());
+			response.append("\">../</a>\n</td>\n</tr>\n");
+		}
 
 		File[] directories = directory.listFiles(File::isDirectory);
 		if (directories != null) {
 			for (File d : directories) {
 				Path relative = getRootDirectory().relativize(d.toPath());
-				writer.write("<tr>\n");
-
-				writer.write(relativeDirectoryImageHTML);
-
-				writer.write("<td>\n<a href=\"/"
-						+ relative
-						+ "\">" + relative.getFileName() + "/</a>\n</td>\n");
-
-				writer.write("</tr>\n");
+				response.append("<tr>\n");
+				response.append(relativeDirectoryImageHTML);
+				response.append("<td>\n<a href=\"/");
+				response.append(relative.toString());
+				response.append("\">");
+				response.append(relative.getFileName().toString());
+				response.append("/</a>\n</td>\n</tr>\n");
 			}
 		}
 
@@ -423,25 +451,29 @@ public class Server {
 		if (files != null) {
 			for (File file : files) {
 				Path relative = getRootDirectory().relativize(file.toPath());
-				writer.write("<tr>\n");
+				response.append("<tr>\n");
 
-				writer.write(relativeFileImageHTML);
+				response.append(relativeFileImageHTML);
 
-				writer.write("<td>\n<a href=\"/"
-						+ relative
-						+ "\">" + relative.getFileName() + "</a>\n</td>\n");
+				response.append("<td>\n<a href=\"/");
+				response.append(relative.toString());
+				response.append("\">");
+				response.append(relative.getFileName().toString());
+				response.append("</a>\n</td>\n");
 
-				writer.write("</tr>\n");
+				response.append("</tr>\n");
 			}
 		}
 
-		writer.write("</tbody>\n");
+		response.append("</tbody>\n</table>\n</body>\n</html>\n");
 
-		writer.write("</table>\n");
+		responseHeader.add("Content-Length", response.length());
 
-		writer.write("</body>\n");
+		writer.write(responseHeader.toString());
 
-		writer.write("</html>\n");
+		writer.flush();
+
+		writer.write(response.toString());
 
 		writer.flush();
 	}
@@ -472,25 +504,20 @@ public class Server {
 			} else {
 				delimiterTestBuffer[0] = (char) c;
 
-				boolean delimiterFound = true;
-
 				for (int i = 1; i < delimiter.length(); i++) {
-					if ((c = in.read()) == -1) {
+					c = in.read();
+					if (c == -1) {
 						request.append(delimiterTestBuffer, 0, i);
 						return request.toString();
-					}
-
-					delimiterTestBuffer[i] = (char) c;
-
-					if (delimiterTestBuffer[i] != delimiter.charAt(i)) {
-						request.append(delimiterTestBuffer, 0, i + 1);
-						delimiterFound = false;
-						break;
+					} else {
+						delimiterTestBuffer[i] = (char) c;
 					}
 				}
 
-				if (delimiterFound) {
+				if (new String(delimiterTestBuffer).equals(delimiter)) {
 					return request.toString();
+				} else {
+					request.append(delimiterTestBuffer, 0, delimiter.length());
 				}
 			}
 		}
@@ -498,7 +525,7 @@ public class Server {
 	}
 
 	static String readLine(BufferedInputStream in) throws IOException {
-		return read(in, CRLF).trim();
+		return read(in, CRLF);
 	}
 
 	private static SSLServerSocketFactory getSocketFactory() throws IOException {
@@ -547,13 +574,14 @@ public class Server {
 	public static void main(String[] args) {
 		Options options = new Options();
 
-		Option cache = new Option("c", "cache", true, "cache time in seconds");
-		cache.setRequired(false);
-		options.addOption(cache);
+		Option cacheOption = new Option("c", "cache", true, "cache time in seconds");
+		cacheOption.setRequired(false);
+		cacheOption.setType(Integer.class);
+		options.addOption(cacheOption);
 
-		Option resource = new Option("r", "resource", true, "resource directory");
-		resource.setRequired(false);
-		options.addOption(resource);
+		Option resourceOption = new Option("r", "resource", true, "resource directory");
+		resourceOption.setRequired(false);
+		options.addOption(resourceOption);
 
 		CommandLineParser parser = new DefaultParser();
 		HelpFormatter formatter = new HelpFormatter();
@@ -563,25 +591,24 @@ public class Server {
 			cmd = parser.parse(options, args);
 		} catch (ParseException e) {
 			logger.error(e.getStackTrace());
-			formatter.printHelp("utility-name", options);
+			formatter.printHelp("java-server", options);
 			System.exit(1);
 		}
 
-		String cacheTime = cmd.getOptionValue("cache");
-		String resourceDirectory = cmd.getOptionValue("resource");
-
-		if (cacheTime != null) {
+		String cache = cmd.getOptionValue("cache");
+		if (cache != null) {
 			try {
-				CACHE_TIME = Integer.parseInt(cacheTime);
+				cacheTime = Integer.parseInt(cache);
 			} catch (NumberFormatException e) {
 				logger.fatal("Invalid cache time.");
 				System.exit(1);
 			}
 		}
 
-		if (resourceDirectory != null) {
+		String resource = cmd.getOptionValue("resource");
+		if (resource != null) {
 			try {
-				resource_directory = Paths.get(resourceDirectory);
+				resourceDirectory = Paths.get(resource);
 			} catch (InvalidPathException e) {
 				logger.fatal("Invalid resource directory.");
 				System.exit(1);
@@ -676,7 +703,6 @@ public class Server {
 
 			while (!(line = readLine(in)).isEmpty()) {
 				tokens = line.split(": ", 2);
-
 				header.put(tokens[0], tokens[1]);
 			}
 
@@ -696,7 +722,7 @@ public class Server {
 						Path indexFile = Paths.get(file.toString(), "index.html");
 						if (Files.exists(indexFile)) {
 							file = new File(indexFile.toString());
-							send(200, out, file);
+							send(200, out, file, null);
 						} else {
 							sendDirectoryListing(out, file);
 						}
@@ -751,7 +777,13 @@ public class Server {
 							}
 						}
 					} else {
-						send(200, out, file);
+						String etag = getETag(file);
+						if (header.containsKey("If-None-Match")
+								&& header.get("If-None-Match").equals(etag)) {
+							sendNotModifiedResponse(out, etag);
+						} else {
+							send(200, out, file, etag);
+						}
 					}
 				} catch (IOException e) {
 					sendErrorResponse(403, out);
