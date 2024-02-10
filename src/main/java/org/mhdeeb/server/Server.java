@@ -15,7 +15,6 @@ import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.InvalidPathException;
-import java.nio.file.Paths;
 import java.security.KeyManagementException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
@@ -30,7 +29,6 @@ import java.util.Calendar;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Locale;
-import java.util.Optional;
 import java.util.TimeZone;
 import java.util.Map.Entry;
 
@@ -50,6 +48,13 @@ import org.apache.commons.cli.ParseException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import gg.jte.CodeResolver;
+import gg.jte.ContentType;
+import gg.jte.TemplateEngine;
+import gg.jte.TemplateOutput;
+import gg.jte.output.StringOutput;
+import gg.jte.resolve.DirectoryCodeResolver;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class Server {
@@ -68,7 +73,10 @@ public class Server {
 
 	private static final String DEFAULT_HTTP_SPEC = ALLOWED_HTTP[0];
 
-	private static Path resourceDirectory = Paths.get("./");
+	public static Path resourceDirectory = Path.of("./");
+
+	private static CodeResolver codeResolver = null;;
+	private static TemplateEngine templateEngine = null;
 
 	private static final String CRLF = "\r\n";
 
@@ -139,40 +147,44 @@ public class Server {
 		}
 	}
 
-	private static Path getResourceDirectory() {
+	public static Path getResourceDirectory() {
 		return resourceDirectory;
 	}
 
 	private static Path getWWWDirectory() {
-		return Paths.get(getResourceDirectory().toString(), "WWW");
+		return Path.of(getResourceDirectory().toString(), "WWW");
+	}
+
+	private static Path getJTEDirectory() {
+		return Path.of(getWWWDirectory().toString(), "jte");
 	}
 
 	private static Path getErrorDirectory() {
-		return Paths.get(getWWWDirectory().toString(), "error");
+		return Path.of(getWWWDirectory().toString(), "error");
 	}
 
-	private static Path getRootDirectory() {
-		return Paths.get(getWWWDirectory().toString(), "content");
+	public static Path getRootDirectory() {
+		return Path.of(getWWWDirectory().toString(), "content");
 	}
 
 	private static Path getImageDirectory() {
-		return Paths.get(getRootDirectory().toString(), "image");
+		return Path.of(getRootDirectory().toString(), "image");
 	}
 
-	private static Path getImage(String name) {
-		return Paths.get(getImageDirectory().toString(), name);
+	public static Path getImage(String name) {
+		return Path.of(getImageDirectory().toString(), name);
 	}
 
 	private static Path getUploadDirectory() {
-		return Paths.get(getRootDirectory().toString(), "upload");
+		return Path.of(getRootDirectory().toString(), "upload");
 	}
 
 	private static Path getTrustStorePath() {
-		return Paths.get(getWWWDirectory().toString(), "cert.p12");
+		return Path.of(getWWWDirectory().toString(), "cert.p12");
 	}
 
 	private static Path getKeyStorePath() {
-		return Paths.get(getWWWDirectory().toString(), "cert.p12");
+		return Path.of(getWWWDirectory().toString(), "cert.p12");
 	}
 
 	private static String getMimeType(String fileName) {
@@ -362,26 +374,35 @@ public class Server {
 	}
 
 	static void sendErrorResponse(int errorCode, OutputStream socketOut) throws IOException {
-		File file = new File(Paths.get(getErrorDirectory().toString(), errorCode + ".html").toString());
+		File file = new File(Path.of(getErrorDirectory().toString(), errorCode + ".html").toString());
 
 		if (!file.exists()) {
-			file = new File(Paths.get(getErrorDirectory().toString(), DEFAULT_ERROR_CODE + ".html").toString());
+			file = new File(Path.of(getErrorDirectory().toString(), DEFAULT_ERROR_CODE + ".html").toString());
 		}
 
 		send(errorCode, socketOut, file, null);
 	}
 
 	private static void sendBanResponse(Socket connection) throws IOException {
-		File file = new File(Paths.get(getErrorDirectory().toString(), "Ban.html").toString());
+		File file = new File(Path.of(getErrorDirectory().toString(), "Ban.html").toString());
 
 		if (!file.exists()) {
-			file = new File(Paths.get(getErrorDirectory().toString(), DEFAULT_ERROR_CODE + ".html").toString());
+			file = new File(Path.of(getErrorDirectory().toString(), DEFAULT_ERROR_CODE + ".html").toString());
 		}
 
 		send(200, connection.getOutputStream(), file, null);
 	}
 
-	private static void sendDirectoryListing(OutputStream out, File directory) throws IOException {
+	private static void sendDirectoryListing(OutputStream out, File directory) throws gg.jte.TemplateException {
+		if (templateEngine == null) {
+			throw new gg.jte.TemplateException("Template engine not initialized.");
+		}
+		TemplateOutput output = new StringOutput();
+
+		templateEngine.render("directories.jte", directory, output);
+
+		String response = output.toString();
+
 		PrintWriter writer = new PrintWriter(out);
 
 		ResponseHeader responseHeader = new ResponseHeader();
@@ -390,90 +411,13 @@ public class Server {
 		responseHeader.setStatusCode(200);
 		responseHeader.add("Connection", "close");
 		responseHeader.add("content-type", "text/html; charset=utf-8");
-
-		StringBuilder response = new StringBuilder();
-
-		String relativeDirectoryImageString = "/" + getRootDirectory().relativize(getImage("folder.svg")).toString()
-				.replace("\\", "/");
-		String relativeFileImageString = "/"
-				+ getRootDirectory().relativize(getImage("file.svg")).toString().replace("\\",
-						"/");
-		String relativeParentImageString = "/" + getRootDirectory().relativize(getImage("undo.svg")).toString()
-				.replace("\\", "/");
-
-		String relativeParentImageHTML = "<td valign=\"top\">\n<img src=\"" + relativeParentImageString
-				+ "\" alt=\"Parent Directory\" width=\"20\" height=\"22\">\n</td>\n";
-
-		String relativeFileImageHTML = "<td valign=\"top\">\n<img src=\"" + relativeFileImageString
-				+ "\" alt=\"Parent Directory\" width=\"20\" height=\"22\">\n</td>\n";
-
-		String relativeDirectoryImageHTML = "<td valign=\"top\">\n<img src=\"" + relativeDirectoryImageString
-				+ "\" alt=\"Parent Directory\" width=\"20\" height=\"22\">\n</td>\n";
-
-		Path relativeDirectoryPath = getRootDirectory().relativize(directory.toPath());
-		String relativeDirectoryString = relativeDirectoryPath.toString().replace("\\", "/");
-
-		response.append(
-				"<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\" />\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n<title>Index of /");
-		response.append(relativeDirectoryString);
-		response.append("</title>\n</head>\n<body>\n<h1>Index of /");
-		response.append(relativeDirectoryString);
-		response.append("</h1>\n<table>\n<tbody>\n");
-
-		if (relativeDirectoryString.length() > 0) {
-			response.append("<tr>\n");
-			response.append("<tr>\n");
-
-			response.append("<tr>\n");
-
-			response.append(relativeParentImageHTML);
-			response.append("<td>\n<a href=\"/");
-			Path relativeDirectoryParentPath = relativeDirectoryPath.getParent();
-			response.append((relativeDirectoryParentPath == null ? "" : relativeDirectoryParentPath).toString());
-			response.append("\">../</a>\n</td>\n</tr>\n");
-		}
-
-		File[] directories = directory.listFiles(File::isDirectory);
-		if (directories != null) {
-			for (File d : directories) {
-				Path relative = getRootDirectory().relativize(d.toPath());
-				response.append("<tr>\n");
-				response.append(relativeDirectoryImageHTML);
-				response.append("<td>\n<a href=\"/");
-				response.append(relative.toString());
-				response.append("\">");
-				response.append(relative.getFileName().toString());
-				response.append("/</a>\n</td>\n</tr>\n");
-			}
-		}
-
-		File[] files = directory.listFiles(File::isFile);
-		if (files != null) {
-			for (File file : files) {
-				Path relative = getRootDirectory().relativize(file.toPath());
-				response.append("<tr>\n");
-
-				response.append(relativeFileImageHTML);
-
-				response.append("<td>\n<a href=\"/");
-				response.append(relative.toString());
-				response.append("\">");
-				response.append(relative.getFileName().toString());
-				response.append("</a>\n</td>\n");
-
-				response.append("</tr>\n");
-			}
-		}
-
-		response.append("</tbody>\n</table>\n</body>\n</html>\n");
-
 		responseHeader.add("Content-Length", response.length());
 
 		writer.write(responseHeader.toString());
 
 		writer.flush();
 
-		writer.write(response.toString());
+		writer.write(response);
 
 		writer.flush();
 	}
@@ -608,12 +552,15 @@ public class Server {
 		String resource = cmd.getOptionValue("resource");
 		if (resource != null) {
 			try {
-				resourceDirectory = Paths.get(resource);
+				resourceDirectory = Path.of(resource);
 			} catch (InvalidPathException e) {
 				logger.fatal("Invalid resource directory.");
 				System.exit(1);
 			}
 		}
+
+		codeResolver = new DirectoryCodeResolver(getJTEDirectory());
+		templateEngine = TemplateEngine.create(codeResolver, ContentType.Html);
 
 		try (
 				ServerSocket serverSocket = new ServerSocket(LISTENING_PORT);
@@ -708,7 +655,7 @@ public class Server {
 
 			if (requestType.equals("GET")) {
 
-				Path path = Paths.get(getRootDirectory().toString(), requestPath);
+				Path path = Path.of(getRootDirectory().toString(), requestPath);
 
 				if (!Files.exists(path)) {
 					sendErrorResponse(404, out);
@@ -719,7 +666,7 @@ public class Server {
 
 				try {
 					if (file.isDirectory()) {
-						Path indexFile = Paths.get(file.toString(), "index.html");
+						Path indexFile = Path.of(file.toString(), "index.html");
 						if (Files.exists(indexFile)) {
 							file = new File(indexFile.toString());
 							send(200, out, file, null);
@@ -787,6 +734,9 @@ public class Server {
 					}
 				} catch (IOException e) {
 					sendErrorResponse(403, out);
+				} catch (gg.jte.TemplateException e) {
+					e.printStackTrace();
+					sendErrorResponse(500, out);
 				}
 
 			} else if (requestType.equals("POST")) {
@@ -821,7 +771,7 @@ public class Server {
 
 						try {
 							FileOutputStream fileOutputStream = new FileOutputStream(
-									Paths.get(getUploadDirectory().toString(), fileName).toString());
+									Path.of(getUploadDirectory().toString(), fileName).toString());
 
 							readLine(in);
 
