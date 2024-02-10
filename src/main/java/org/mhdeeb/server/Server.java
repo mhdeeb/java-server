@@ -401,7 +401,7 @@ public class Server {
 
 		templateEngine.render("directories.jte", directory, output);
 
-		String response = output.toString();
+		String response = output.toString().trim().replaceAll("\\s{2,}", " ");
 
 		PrintWriter writer = new PrintWriter(out);
 

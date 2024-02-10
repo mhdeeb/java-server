@@ -19,6 +19,13 @@ interface ByteTransformer<T> {
 }
 
 public class Util {
+    private Util() {
+    }
+
+    public static String cleanPath(String path) {
+        return path.replace("\\", "/");
+    }
+
     public static String extractData(JsonNode root) {
         JsonNode error = root.path("error");
 

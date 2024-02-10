@@ -1,22 +1,21 @@
-		
-
 @import java.io.File
 @import java.nio.file.Path
 @import org.mhdeeb.server.Server
+@import org.mhdeeb.server.Util
 
 @param File directory
 
 !{
     Path relativeDirectoryPath = Server.getRootDirectory().relativize(directory.toPath());
-    String relativeDirectoryString = relativeDirectoryPath.toString().replace("&bsol;", "/");
-    String relativeDirectoryImageString = Server.getRootDirectory().relativize(Server.getImage("folder.svg")).toString().replace("&bsol;", "/");
-    String relativeFileImageString = Server.getRootDirectory().relativize(Server.getImage("file.svg")).toString().replace("&bsol;", "/");
-    String relativeParentImageString = Server.getRootDirectory().relativize(Server.getImage("undo.svg")).toString().replace("&bsol;", "/");
+    String relativeDirectoryString = Util.cleanPath(relativeDirectoryPath.toString());
+    String relativeDirectoryImageString = Util.cleanPath(Server.getRootDirectory().relativize(Server.getImage("folder.svg")).toString());
+    String relativeFileImageString = Util.cleanPath(Server.getRootDirectory().relativize(Server.getImage("file.svg")).toString());
+    String relativeParentImageString = Util.cleanPath(Server.getRootDirectory().relativize(Server.getImage("undo.svg")).toString());
 }
 
 <!DOCTYPE html>
 <html lang="en">
-    <head
+    <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Index /${relativeDirectoryString}</title>
