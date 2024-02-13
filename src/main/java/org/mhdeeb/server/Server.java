@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
-import java.lang.reflect.Array;
 import java.net.Socket;
 import java.net.InetAddress;
 import java.net.ServerSocket;
@@ -32,8 +31,8 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.TimeZone;
-import java.util.function.Function;
 import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -151,6 +150,130 @@ public class Server {
 			response.append(CRLF);
 
 			return response.toString();
+		}
+	}
+
+	private static class RequestHeader {
+		private final HashMap<String, String[]> header = new HashMap<>();
+		private final HashMap<String, String> query = new HashMap<>();
+
+		private String type = null;
+		private String path = null;
+		private String protocol = null;
+		private String port = null;
+		private String ip = null;
+		private BufferedInputStream in = null;
+		private OutputStream out = null;
+
+		public void parseInputStream(Socket connection)
+				throws IOException {
+
+			InetAddress address = connection.getInetAddress();
+
+			if (address == null) {
+				throw new IOException("Failed to get IP address.");
+			}
+
+			ip = address.getHostAddress();
+			in = new BufferedInputStream(connection.getInputStream());
+			out = connection.getOutputStream();
+
+			String line = readLine(in);
+
+			String[] tokens = line.split(" ");
+
+			if (tokens.length != 3) {
+				sendErrorResponse(400, out);
+				logger.warn("Bad request: {} :: {}", ip, Util.toHex(line));
+				throw new IOException("Bad request.");
+			}
+
+			String[] requestPathTokens = tokens[1].split("\\?");
+
+			type = tokens[0];
+			path = requestPathTokens[0];
+			protocol = tokens[2];
+
+			logger.info("{}:: {} {} {}", ip, type, tokens[1], protocol);
+
+			if (requestPathTokens.length > 1)
+				parseQuery(query, requestPathTokens[1]);
+
+			if (Arrays.stream(ALLOWED_HTTP).noneMatch(protocol::equals)) {
+				sendErrorResponse(400, out);
+				connection.close();
+				logger.warn("{} is not supported :: {}", protocol, ip);
+				throw new IOException("Unsupported protocol.");
+			}
+
+			while (!(line = readLine(in)).isEmpty()) {
+				tokens = line.split(": ", 2);
+				header.put(tokens[0], tokens[1].split(";"));
+			}
+
+			if (header.containsKey("Host")) {
+				String[] hostTokens = header.get("Host")[0].split(":", 2);
+				if (hostTokens.length > 1)
+					port = hostTokens[1];
+			}
+		}
+
+		public String getType() {
+			return type;
+		}
+
+		public String getPath() {
+			return path;
+		}
+
+		public String getProtocol() {
+			return protocol;
+		}
+
+		public String getPort() {
+			return port;
+		}
+
+		public String getIP() {
+			return ip;
+		}
+
+		public Map<String, String[]> getHeader() {
+			return header;
+		}
+
+		public Map<String, String> getQuery() {
+			return query;
+		}
+
+		public BufferedInputStream getIn() {
+			return in;
+		}
+
+		public OutputStream getOut() {
+			return out;
+		}
+
+		@Override
+		public String toString() {
+			StringBuilder request = new StringBuilder();
+
+			StringBuilder pathSB = new StringBuilder(path);
+
+			if (!query.isEmpty()) {
+				pathSB.append("?");
+				query.forEach((key, value) -> pathSB.append(key).append("=").append(value).append("&"));
+				pathSB.deleteCharAt(pathSB.length() - 1);
+			}
+
+			request.append(type).append(" ").append(path).append(pathSB).append(" ").append(protocol).append(CRLF);
+
+			for (Entry<String, String[]> entry : header.entrySet())
+				request.append(entry.getKey()).append(": ").append(String.join(";", entry.getValue())).append(CRLF);
+
+			request.append(CRLF);
+
+			return request.toString();
 		}
 	}
 
@@ -400,7 +523,7 @@ public class Server {
 		send(200, out, file, null);
 	}
 
-	private static void sendDirectoryListing(OutputStream out, File directory, HashMap<String, String> query)
+	private static void sendDirectoryListing(OutputStream out, File directory, Map<String, String> query)
 			throws gg.jte.TemplateException {
 		if (templateEngine == null) {
 			throw new gg.jte.TemplateException("Template engine not initialized.");
@@ -550,7 +673,7 @@ public class Server {
 		}
 	}
 
-	private static void parseQuery(LinkedHashMap<String, String> map, String query) {
+	private static void parseQuery(Map<String, String> map, String query) {
 		String[] tokens = query.split("&");
 
 		for (String token : tokens) {
@@ -765,138 +888,95 @@ public class Server {
 	}
 
 	private static void handleConnection(Socket connection) {
-		InetAddress address = connection.getInetAddress();
 
-		if (address == null)
+		RequestHeader request = new RequestHeader();
+		try {
+			request.parseInputStream(connection);
+		} catch (IOException e) {
+			logger.error("Failed to parse input stream.");
+
+			if (request.getIP() != null && !request.getIP().isEmpty())
+				logger.info("Connection closed:: {}", request.getIP());
+
 			return;
-
-		String ip = address.getHostAddress();
+		}
 
 		try {
-			if (isBlocked(ip)) {
-				logger.info("{} is banned.", ip);
+			if (isBlocked(request.getIP())) {
+				logger.info("{} is banned.", request.getIP());
 				connection.close();
 				return;
 			}
 
-			String ipLookUp = Util.getIPLookUp(ip, mapper);
-			logger.info("{} connected from {}", ip, ipLookUp);
+			String ipLookUp = Util.getIPLookUp(request.getIP(), mapper);
+			logger.info("{} connected from {}", request.getIP(), ipLookUp);
 
-			BufferedInputStream in = new BufferedInputStream(connection.getInputStream());
-			OutputStream out = connection.getOutputStream();
+			if (request.getType().equals("GET")) {
 
-			String requestType;
-			String requestPath;
-			String requestProtocol;
-			LinkedHashMap<String, String> query = new LinkedHashMap<>();
-
-			String line = readLine(in);
-
-			String[] tokens = line.split(" ");
-
-			if (tokens.length != 3) {
-				sendErrorResponse(400, out);
-				String hex = Util.toHex(line);
-				logger.warn("Bad request: {} :: {}", ip, hex);
-				return;
-			}
-
-			String[] requestPathTokens = tokens[1].split("\\?");
-
-			requestType = tokens[0];
-			requestPath = requestPathTokens[0];
-			requestProtocol = tokens[2];
-
-			if (requestPathTokens.length > 1) {
-				parseQuery(query, requestPathTokens[1]);
-
-				for (Entry<String, String> entry : query.entrySet()) {
-					logger.info("{}:: {} = {}", ip, entry.getKey(), entry.getValue());
-				}
-			}
-
-			logger.info("{}:: {} {} {}", ip, requestType, requestPath,
-					requestProtocol);
-
-			if (Arrays.stream(ALLOWED_HTTP).noneMatch(requestProtocol::equals)) {
-				sendErrorResponse(400, out);
-				connection.close();
-				logger.warn("{} is not supported :: {}", requestProtocol, ip);
-				return;
-			}
-
-			HashMap<String, String> header = new HashMap<>();
-
-			while (!(line = readLine(in)).isEmpty()) {
-				tokens = line.split(": ", 2);
-				header.put(tokens[0], tokens[1]);
-			}
-
-			if (requestType.equals("GET")) {
-
-				Path path = Path.of(getRootDirectory().toString(), requestPath);
+				Path path = Path.of(getRootDirectory().toString(), request.getPath());
 
 				if (!Files.exists(path)) {
-					sendErrorResponse(404, out);
+					sendErrorResponse(404, request.getOut());
 					return;
 				}
 
 				File file = new File(path.toString());
 
 				try {
-					if (query.containsKey("zip")) {
-						sendZip(out, file);
+					if (request.getQuery().containsKey("zip")) {
+						sendZip(request.getOut(), file);
 					} else {
 						if (file.isDirectory()) {
 							Path indexFile = Path.of(file.toString(), "index.html");
 							if (Files.exists(indexFile)) {
 								file = new File(indexFile.toString());
-								send(200, out, file, null);
+								send(200, request.getOut(), file, null);
 							} else {
-								sendDirectoryListing(out, file, query);
+								sendDirectoryListing(request.getOut(), file, request.getQuery());
 							}
-						} else if (header.containsKey("Range")) {
-							handleSendChunked(header.get("Range"), file, out);
+						} else if (request.getHeader().containsKey("Range")) {
+							handleSendChunked(request.getHeader().get("Range")[0], file, request.getOut());
 						} else {
 							String etag = getETag(file);
-							if (header.containsKey("If-None-Match")
-									&& header.get("If-None-Match").equals(etag)) {
-								sendNotModifiedResponse(out, etag);
+							if (request.getHeader().containsKey("If-None-Match")
+									&& request.getHeader().get("If-None-Match").equals(etag)) {
+								sendNotModifiedResponse(request.getOut(), etag);
 							} else {
-								send(200, out, file, etag);
+								send(200, request.getOut(), file, etag);
 							}
 						}
 					}
 				} catch (IOException e) {
-					sendErrorResponse(403, out);
+					sendErrorResponse(403, request.getOut());
 				} catch (gg.jte.TemplateException e) {
 					e.printStackTrace();
-					sendErrorResponse(500, out);
+					sendErrorResponse(500, request.getOut());
 				}
 
-			} else if (requestType.equals("POST")) {
+			} else if (request.getType().equals("POST")) {
 
-				String[] contentType = header.get("Content-Type").split("; ");
+				String[] contentType = request.getHeader().get("Content-Type");
 
 				if (contentType[0].equals("text/plain")) {
-					if (!(line = readLine(in)).isEmpty()) {
-						parseQuery(query, line);
+					String line;
+					if (!(line = readLine(request.getIn())).isEmpty()) {
+						parseQuery(request.getQuery(), line);
 
-						for (Entry<String, String> entry : query.entrySet()) {
-							logger.info("{}:: {} = {}", ip, entry.getKey(), entry.getValue());
+						for (Entry<String, String> entry : request.getQuery().entrySet()) {
+							logger.info("{}:: {} = {}", request.getIP(), entry.getKey(), entry.getValue());
 						}
 					}
 				} else if (contentType[0].equals("multipart/form-data")) {
-					String boundary = CRLF + readLine(in);
+					String boundary = CRLF + readLine(request.getIn());
 
 					byte[] boundaryTestBuffer = new byte[boundary.length()];
 
 					String contentDisposition;
 
-					loop: while (!(contentDisposition = readLine(in)).isEmpty()) {
+					loop: while (!(contentDisposition = readLine(request.getIn())).isEmpty()) {
 
 						@SuppressWarnings("unused")
-						String fileContentType = readLine(in);
+						String fileContentType = readLine(request.getIn());
 
 						String fileName = contentDisposition.split("filename=\"", 2)[1].split("\"", 2)[0];
 
@@ -908,10 +988,10 @@ public class Server {
 							FileOutputStream fileOutputStream = new FileOutputStream(
 									Path.of(getUploadDirectory().toString(), fileName).toString());
 
-							readLine(in);
+							readLine(request.getIn());
 
 							int c;
-							while ((c = in.read()) != -1) {
+							while ((c = request.getIn().read()) != -1) {
 
 								if (c != boundary.charAt(0)) {
 									fileOutputStream.write(c);
@@ -921,7 +1001,7 @@ public class Server {
 									boolean boundaryFound = true;
 
 									for (int i = 1; i < boundary.length(); i++) {
-										if ((c = in.read()) == -1) {
+										if ((c = request.getIn().read()) == -1) {
 											throw new IOException("Unexpected end of stream.");
 										}
 
@@ -935,15 +1015,15 @@ public class Server {
 									}
 
 									if (boundaryFound) {
-										if (in.read() != '\r') {
-											in.read();
-											in.read();
+										if (request.getIn().read() != '\r') {
+											request.getIn().read();
+											request.getIn().read();
 
 											fileOutputStream.close();
 											break loop;
 										}
 
-										in.read();
+										request.getIn().read();
 										break;
 									}
 								}
@@ -952,7 +1032,7 @@ public class Server {
 							fileOutputStream.close();
 						} catch (IOException e) {
 							try {
-								sendErrorResponse(500, out);
+								sendErrorResponse(500, request.getOut());
 							} catch (IOException ioException) {
 								ioException.printStackTrace();
 							}
@@ -960,16 +1040,16 @@ public class Server {
 					}
 				}
 
-				sendNoContentResponse(out);
+				sendNoContentResponse(request.getOut());
 			} else {
-				sendErrorResponse(501, out);
+				sendErrorResponse(501, request.getOut());
 			}
 
-			in.close();
-			out.close();
+			request.getIn().close();
+			request.getOut().close();
 
 		} catch (javax.net.ssl.SSLHandshakeException e) {
-			logger.error("{} failed to establish SSL connection.", ip);
+			logger.error("{} failed to establish SSL connection.", request.getIP());
 		} catch (java.net.SocketTimeoutException e) {
 			try {
 				sendNoContentResponse(connection.getOutputStream());
@@ -990,7 +1070,7 @@ public class Server {
 				e.printStackTrace();
 			}
 
-			logger.info("Connection closed:: {}", ip);
+			logger.info("Connection closed:: {}", request.getIP());
 		}
 	}
 
