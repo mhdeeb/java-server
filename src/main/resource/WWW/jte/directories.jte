@@ -83,7 +83,7 @@
                                 <img src="/${relativeFileImageString}" alt="[FILE]" width="20" height="22">
                             </td>
                             <td>
-                                <a href="/${relative.toString()}">${relative.getFileName().toString()}/</a>
+                                <a href="/${relative.toString()}">${relative.getFileName().toString()}</a>
                             </td>
                             <td style="padding: 0 15px; text-align: center;">
                                 ${Util.millisecondsToDateString(file.lastModified())}
