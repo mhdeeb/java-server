@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.lang.reflect.Array;
 import java.net.Socket;
 import java.net.InetAddress;
 import java.net.ServerSocket;
@@ -26,11 +27,13 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
+import java.util.function.Function;
 import java.util.zip.Deflater;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -397,13 +400,85 @@ public class Server {
 		send(200, out, file, null);
 	}
 
-	private static void sendDirectoryListing(OutputStream out, File directory) throws gg.jte.TemplateException {
+	private static void sendDirectoryListing(OutputStream out, File directory, HashMap<String, String> query)
+			throws gg.jte.TemplateException {
 		if (templateEngine == null) {
 			throw new gg.jte.TemplateException("Template engine not initialized.");
 		}
-		TemplateOutput output = new StringOutput();
 
-		templateEngine.render("directories.jte", directory, output);
+		Path relativeDirectoryPath = Server.getRootDirectory().relativize(directory.toPath());
+
+		String relativeDirectoryString = Util.cleanPath(relativeDirectoryPath.toString());
+
+		String relativeDirectoryImageString = Util
+				.cleanPath(Server.getRootDirectory().relativize(Server.getImage("folder.svg")).toString());
+
+		String relativeFileImageString = Util
+				.cleanPath(Server.getRootDirectory().relativize(Server.getImage("file.svg")).toString());
+
+		String relativeParentImageString = Util
+				.cleanPath(Server.getRootDirectory().relativize(Server.getImage("undo.svg")).toString());
+
+		File[] files = directory.listFiles();
+
+		HashMap<String, String> columns = new HashMap<>();
+
+		columns.put("N", "A");
+		columns.put("M", "A");
+		columns.put("S", "A");
+		columns.put("D", "A");
+
+		List<String> orders = Arrays.asList("A", "D");
+
+		String column = query.get("C");
+		String order = query.get("O");
+
+		if (columns.containsKey(column) && orders.contains(order)) {
+			columns.put(column, order.equals("A") ? "D" : "A");
+
+			if (column.equals("N")) {
+				if (order.equals("A"))
+					Arrays.sort(files, Comparator.comparing(File::getName));
+				else if (order.equals("D"))
+					Arrays.sort(files, Comparator.comparing(File::getName).reversed());
+			} else if (column.equals("M")) {
+				if (order.equals("A"))
+					Arrays.sort(files, Comparator.comparingLong(File::lastModified).reversed());
+				else if (order.equals("D"))
+					Arrays.sort(files, Comparator.comparingLong(File::lastModified));
+			} else if (column.equals("S")) {
+				if (order.equals("A"))
+					Arrays.sort(files, Comparator.comparingLong(Util::getFileSize));
+				else if (order.equals("D"))
+					Arrays.sort(files, Comparator.comparingLong(Util::getFileSize).reversed());
+			} else if (column.equals("D")) {
+				if (order.equals("A"))
+					Arrays.sort(files, Comparator.comparing(File::isDirectory));
+				else if (order.equals("D"))
+					Arrays.sort(files, Comparator.comparing(File::isDirectory).reversed());
+			}
+		}
+
+		HashMap<String, Object> params = new HashMap<>();
+
+		params.put("relativeDirectoryPath", relativeDirectoryPath);
+		params.put("relativeDirectoryString", relativeDirectoryString);
+		params.put("relativeDirectoryImageString", relativeDirectoryImageString);
+		params.put("relativeFileImageString", relativeFileImageString);
+		params.put("relativeParentImageString", relativeParentImageString);
+		params.put("files", files);
+
+		String[] ordering = new String[4];
+
+		ordering[0] = columns.get("N");
+		ordering[1] = columns.get("M");
+		ordering[2] = columns.get("S");
+		ordering[3] = columns.get("D");
+
+		params.put("ordering", ordering);
+
+		TemplateOutput output = new StringOutput();
+		templateEngine.render("directories.jte", params, output);
 
 		String response = output.toString().trim().replaceAll("\\s{2,}", " ");
 
@@ -778,7 +853,7 @@ public class Server {
 								file = new File(indexFile.toString());
 								send(200, out, file, null);
 							} else {
-								sendDirectoryListing(out, file);
+								sendDirectoryListing(out, file, query);
 							}
 						} else if (header.containsKey("Range")) {
 							handleSendChunked(header.get("Range"), file, out);

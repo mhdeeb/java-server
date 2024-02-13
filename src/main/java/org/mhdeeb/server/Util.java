@@ -215,6 +215,13 @@ public class Util {
         return length;
     }
 
+    public static long getFileSize(File file) {
+        if (file.isDirectory())
+            return getFolderSize(file);
+
+        return file.length();
+    }
+
     private static void zipSingleFile(File file, File zipFile) throws IOException {
         try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFile));
                 FileInputStream fis = new FileInputStream(file);) {
