@@ -28,8 +28,12 @@ import java.util.Arrays;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
+import java.util.zip.Deflater;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import java.util.Map.Entry;
 
 import javax.net.ssl.KeyManagerFactory;
@@ -253,8 +257,6 @@ public class Server {
 
 	private static void send(int statusCode, OutputStream socketOut, File file, String etag)
 			throws IOException {
-		PrintWriter out = new PrintWriter(socketOut);
-
 		ResponseHeader responseHeader = new ResponseHeader();
 
 		responseHeader.setSpec(DEFAULT_HTTP_SPEC);
@@ -272,17 +274,15 @@ public class Server {
 		responseHeader.add("Accept-Ranges", "bytes");
 		responseHeader.add("Content-Length", file.length());
 
-		out.write(responseHeader.toString());
+		socketOut.write(responseHeader.toString().getBytes());
 
-		out.flush();
+		socketOut.flush();
 
 		sendFile(file, socketOut);
 	}
 
 	private static void sendChunked(OutputStream socketOut, File file, long start, long end)
 			throws IOException {
-		PrintWriter out = new PrintWriter(socketOut);
-
 		long fileSize = file.length();
 
 		if (start > fileSize - 1 || start < 0 || start > end || end < 0)
@@ -311,9 +311,9 @@ public class Server {
 		responseHeader.add("Content-Length", len);
 		responseHeader.add("Content-Range", String.format("bytes %d-%d/%d", start, end, fileSize));
 
-		out.write(responseHeader.toString());
+		socketOut.write(responseHeader.toString().getBytes());
 
-		out.flush();
+		socketOut.flush();
 
 		sendFileChunked(file, socketOut, start, len);
 	}
@@ -358,6 +358,8 @@ public class Server {
 
 	static void sendNoContentResponse(OutputStream socketOut) throws IOException {
 		socketOut.write(String.format("%s 204 No Content%s%s", DEFAULT_HTTP_SPEC, CRLF, CRLF).getBytes());
+
+		socketOut.flush();
 	}
 
 	static void sendNotModifiedResponse(OutputStream socketOut, String etag) throws IOException {
@@ -371,6 +373,8 @@ public class Server {
 		responseHeader.add("ETag", etag);
 
 		socketOut.write(responseHeader.toString().getBytes());
+
+		socketOut.flush();
 	}
 
 	static void sendErrorResponse(int errorCode, OutputStream socketOut) throws IOException {
@@ -383,14 +387,14 @@ public class Server {
 		send(errorCode, socketOut, file, null);
 	}
 
-	private static void sendBanResponse(Socket connection) throws IOException {
+	private static void sendBanResponse(OutputStream out) throws IOException {
 		File file = new File(Path.of(getErrorDirectory().toString(), "Ban.html").toString());
 
 		if (!file.exists()) {
 			file = new File(Path.of(getErrorDirectory().toString(), DEFAULT_ERROR_CODE + ".html").toString());
 		}
 
-		send(200, connection.getOutputStream(), file, null);
+		send(200, out, file, null);
 	}
 
 	private static void sendDirectoryListing(OutputStream out, File directory) throws gg.jte.TemplateException {
@@ -420,6 +424,55 @@ public class Server {
 		writer.write(response);
 
 		writer.flush();
+	}
+
+	private static void sendZip(OutputStream out, File file) throws IOException {
+		ResponseHeader responseHeader = new ResponseHeader();
+
+		responseHeader.setSpec(DEFAULT_HTTP_SPEC);
+
+		responseHeader.setStatusCode(200);
+
+		responseHeader.add("Content-Type", "application/zip");
+
+		responseHeader.add("Content-Disposition", "attachment; filename=\"" + file.getName() + ".zip\"");
+
+		out.write(responseHeader.toString().getBytes());
+
+		out.flush();
+
+		sendDirectoryZipped(file, out);
+	}
+
+	private static void sendDirectoryZipped(File dir, OutputStream out) throws IOException {
+		List<String> filesListInDir = new ArrayList<>();
+
+		Util.populateFilesList(dir, filesListInDir);
+
+		try (ZipOutputStream zos = new ZipOutputStream(out);) {
+			zos.setLevel(Deflater.NO_COMPRESSION);
+			for (String filePath : filesListInDir) {
+				ZipEntry ze = new ZipEntry(filePath.substring(dir.getAbsolutePath().length() + 1, filePath.length()));
+
+				zos.putNextEntry(ze);
+
+				try (FileInputStream fis = new FileInputStream(filePath);) {
+					byte[] buffer = new byte[1024];
+
+					int len;
+					while ((len = fis.read(buffer)) > 0) {
+						zos.write(buffer, 0, len);
+					}
+
+				}
+				zos.closeEntry();
+			}
+			zos.flush();
+			zos.finish();
+			out.flush();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 
 	private static void parseQuery(LinkedHashMap<String, String> map, String query) {
@@ -585,6 +638,57 @@ public class Server {
 		}
 	}
 
+	private static void handleSendChunked(String rangeString, File file, OutputStream out) throws IOException {
+		String[] range = rangeString.split("=");
+
+		if (!range[0].equals("bytes") || range.length < 2) {
+			sendErrorResponse(400, out);
+			return;
+		}
+
+		String[] ranges = range[1].split(", ");
+
+		for (String r : ranges) {
+			String[] startEnd = r.split("-");
+
+			if (startEnd.length == 2) {
+				long start;
+				long end;
+
+				try {
+					start = Long.parseLong(startEnd[0]);
+					end = Long.parseLong(startEnd[1]);
+				} catch (NumberFormatException e) {
+					sendErrorResponse(400, out);
+					return;
+				}
+
+				sendChunked(out, file, start, end);
+			} else if (startEnd.length == 1) {
+				long limit;
+
+				try {
+					limit = Long.parseLong(startEnd[0]);
+				} catch (NumberFormatException e) {
+					sendErrorResponse(400, out);
+					return;
+				}
+
+				if (r.charAt(0) == '-') {
+					sendChunked(out, file, 0, limit);
+				} else if (r.charAt(r.length() - 1) == '-') {
+					sendChunked(out, file, limit, file.length() - 1);
+				} else {
+					sendErrorResponse(400, out);
+					return;
+				}
+			} else {
+				sendErrorResponse(400, out);
+				return;
+			}
+		}
+	}
+
 	private static void handleConnection(Socket connection) {
 		InetAddress address = connection.getInetAddress();
 
@@ -665,71 +769,27 @@ public class Server {
 				File file = new File(path.toString());
 
 				try {
-					if (file.isDirectory()) {
-						Path indexFile = Path.of(file.toString(), "index.html");
-						if (Files.exists(indexFile)) {
-							file = new File(indexFile.toString());
-							send(200, out, file, null);
-						} else {
-							sendDirectoryListing(out, file);
-						}
-					} else if (header.containsKey("Range")) {
-						String[] range = header.get("Range").split("=");
-
-						if (!range[0].equals("bytes") || range.length < 2) {
-							sendErrorResponse(400, out);
-							return;
-						}
-
-						String[] ranges = range[1].split(", ");
-
-						for (String r : ranges) {
-							String[] startEnd = r.split("-");
-
-							if (startEnd.length == 2) {
-								long start;
-								long end;
-
-								try {
-									start = Long.parseLong(startEnd[0]);
-									end = Long.parseLong(startEnd[1]);
-								} catch (NumberFormatException e) {
-									sendErrorResponse(400, out);
-									return;
-								}
-
-								sendChunked(out, file, start, end);
-							} else if (startEnd.length == 1) {
-								long limit;
-
-								try {
-									limit = Long.parseLong(startEnd[0]);
-								} catch (NumberFormatException e) {
-									sendErrorResponse(400, out);
-									return;
-								}
-
-								if (r.charAt(0) == '-') {
-									sendChunked(out, file, 0, limit);
-								} else if (r.charAt(r.length() - 1) == '-') {
-									sendChunked(out, file, limit, file.length() - 1);
-								} else {
-									sendErrorResponse(400, out);
-									return;
-								}
-
-							} else {
-								sendErrorResponse(400, out);
-								return;
-							}
-						}
+					if (query.containsKey("zip")) {
+						sendZip(out, file);
 					} else {
-						String etag = getETag(file);
-						if (header.containsKey("If-None-Match")
-								&& header.get("If-None-Match").equals(etag)) {
-							sendNotModifiedResponse(out, etag);
+						if (file.isDirectory()) {
+							Path indexFile = Path.of(file.toString(), "index.html");
+							if (Files.exists(indexFile)) {
+								file = new File(indexFile.toString());
+								send(200, out, file, null);
+							} else {
+								sendDirectoryListing(out, file);
+							}
+						} else if (header.containsKey("Range")) {
+							handleSendChunked(header.get("Range"), file, out);
 						} else {
-							send(200, out, file, etag);
+							String etag = getETag(file);
+							if (header.containsKey("If-None-Match")
+									&& header.get("If-None-Match").equals(etag)) {
+								sendNotModifiedResponse(out, etag);
+							} else {
+								send(200, out, file, etag);
+							}
 						}
 					}
 				} catch (IOException e) {
