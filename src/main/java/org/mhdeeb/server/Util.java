@@ -2,11 +2,19 @@ package org.mhdeeb.server;
 
 import java.io.BufferedInputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.math.RoundingMode;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParser;
@@ -126,5 +134,109 @@ public class Util {
 
     public static String toHex(String input) {
         return transformString(input, c -> String.format("%02x", c));
+    }
+
+    public static String millisecondsToDateString(long milliseconds) {
+        long diff = System.currentTimeMillis() - milliseconds;
+        if (diff < 1000)
+            return "just now";
+        diff /= 1000;
+        if (diff < 60)
+            return diff + " seconds ago";
+        diff /= 60;
+        if (diff < 60)
+            return diff + " minutes ago";
+        diff /= 60;
+        if (diff < 24)
+            return diff + " hours ago";
+        return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date(milliseconds));
+    }
+
+    public static String sizeToString(long size) {
+        DecimalFormat df = new DecimalFormat("#.##");
+        df.setRoundingMode(RoundingMode.HALF_UP);
+        if (size < 1024)
+            return size + " B";
+        else if (size < 1024 * 1024)
+            return df.format(size / (double) 1024) + " KB";
+        else if (size < (double) 1024 * 1024 * 1024)
+            return df.format(size / (double) (1024 * 1024)) + " MB";
+        else
+            return df.format(size / (double) (1024 * 1024 * 1024)) + " GB";
+    }
+
+    public static void populateFilesList(File dir, List<String> filesListInDir) throws IOException {
+        File[] files = dir.listFiles();
+        for (File file : files) {
+            if (file.isFile())
+                filesListInDir.add(file.getAbsolutePath());
+            else
+                populateFilesList(file, filesListInDir);
+        }
+    }
+
+    private static void zipDirectory(File dir, File zipFile) throws IOException {
+        List<String> filesListInDir = new ArrayList<>();
+
+        populateFilesList(dir, filesListInDir);
+
+        try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFile));) {
+            for (String filePath : filesListInDir) {
+                ZipEntry ze = new ZipEntry(filePath.substring(dir.getAbsolutePath().length() + 1, filePath.length()));
+
+                zos.putNextEntry(ze);
+
+                try (FileInputStream fis = new FileInputStream(filePath);) {
+                    byte[] buffer = new byte[1024];
+
+                    int len;
+                    while ((len = fis.read(buffer)) > 0) {
+                        zos.write(buffer, 0, len);
+                    }
+                }
+                zos.closeEntry();
+            }
+        }
+    }
+
+    public static long getFolderSize(File folder) {
+        long length = 0;
+        File[] files = folder.listFiles();
+
+        int count = files.length;
+
+        for (int i = 0; i < count; i++) {
+            if (files[i].isFile())
+                length += files[i].length();
+            else
+                length += getFolderSize(files[i]);
+        }
+
+        return length;
+    }
+
+    private static void zipSingleFile(File file, File zipFile) throws IOException {
+        try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFile));
+                FileInputStream fis = new FileInputStream(file);) {
+            ZipEntry ze = new ZipEntry(file.getName());
+
+            zos.putNextEntry(ze);
+
+            byte[] buffer = new byte[1024];
+
+            int len;
+            while ((len = fis.read(buffer)) > 0) {
+                zos.write(buffer, 0, len);
+            }
+
+            zos.closeEntry();
+        }
+    }
+
+    public static void zipFile(File file, File zipFile) throws IOException {
+        if (file.isDirectory())
+            zipDirectory(file, zipFile);
+        else
+            zipSingleFile(file, zipFile);
     }
 }

@@ -23,14 +23,37 @@
     <body>
         <h1>Index of /${relativeDirectoryString}</h1>
         <table>
+            <thead>
+                    <tr>
+                        <th>
+                        </th>
+                        <th>
+                            <a href="?C=N&O=A">Name</a>
+                        </th>
+                        <th>
+                            <a href="?C=M&O=A">Last Modified</a>
+                        </th>
+                        <th>
+                            <a href="?C=S&O=A">Size</a>
+                        </th>
+                        <th>
+                            <a href="?C=S&O=D">Download</a>
+                        </th>
+                    </tr>
+            </thead>
             <tbody>
+                    <tr>
+                        <th colspan="5">
+                            <hr>
+                        </th>
+                    </tr>
                 @if(relativeDirectoryString.length() > 0)
                     <tr>
                         <td valign="top">
                             <img src="/${relativeParentImageString}" alt="[BACK]" width="20" height="22">
                         </td>
                         <td>
-                            <a href="/${relativeDirectoryPath.getParent() == null ? "" : relativeDirectoryPath.getParent().toString()}">../</a>
+                            <a href="/${relativeDirectoryPath.getParent() == null ? "" : relativeDirectoryPath.getParent().toString()}">Parent Directory</a>
                         </td>
                     </tr>
                 @endif
@@ -44,6 +67,15 @@
                             </td>
                             <td>
                                 <a href="/${relative.toString()}">${relative.getFileName().toString()}/</a>
+                            </td>
+                            <td style="padding: 0 15px; text-align: center;">
+                                ${Util.millisecondsToDateString(d.lastModified())}
+                            </td>
+                            <td style="padding: 0 15px; text-align: center;">
+                                ${Util.sizeToString(Util.getFolderSize(d))}
+                            </td>
+                            <td style="text-align: center;">
+                                <a href="/${relative.toString()}?zip" download>Zip</a>
                             </td>
                         </tr>
                     @endfor
@@ -59,9 +91,23 @@
                             <td>
                                 <a href="/${relative.toString()}">${relative.getFileName().toString()}/</a>
                             </td>
+                            <td style="padding: 0 15px; text-align: center;">
+                                ${Util.millisecondsToDateString(file.lastModified())}
+                            </td>
+                            <td style="padding: 0 15px; text-align: right;">
+                                ${Util.sizeToString(file.length())}
+                            </td>
+                            <td style="text-align: center;">
+                                <a href="/${relative.toString()}" download>Download</a>
+                            </td>
                         </tr>
                     @endfor
                 @endif
+                    <tr>
+                        <th colspan="5">
+                            <hr>
+                        </th>
+                    </tr>
             </tbody>
         </table>
     </body>
