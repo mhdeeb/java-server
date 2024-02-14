@@ -10,7 +10,6 @@ function onWindowResize() {
   camera.updateProjectionMatrix();
 
   renderer.setSize(width, height);
-  composer.setSize(width, height);
 }
 
 function createWorld() {

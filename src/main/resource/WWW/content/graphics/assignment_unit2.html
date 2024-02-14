@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+  <!-- this attribute specifies the language of the document -->
+  <head>
+    <meta charset="UTF-8" />
+    <!-- this meta tag is used to specify the character encoding for the HTML document -->
+    <meta
+      name="viewport"
+      content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0"
+    />
+    <!-- this meta tag is used to make the content of the page responsive to the size of the device's screen -->
+    <title>CS4406 Computer Graphics - Assignment #2</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/94/three.min.js"></script>
+    <!-- include the three.js library -->
+  </head>
+  <body>
+    <script>
+      let renderer = new THREE.WebGLRenderer({ antialias: true }); // antialiasing is a technique used to improve the quality of the image produced by the renderer
+
+      renderer.setPixelRatio(window.devicePixelRatio); // this insures that the quality of the image produced by the renderer is consistent across different devices.
+
+      renderer.setSize(window.innerWidth, window.innerHeight); // set the size of the renderer to the size of the window
+
+      document.body.appendChild(renderer.domElement); // add the renderer to the body of the document
+
+      let camera = new THREE.PerspectiveCamera(
+        45,
+        window.innerWidth / window.innerHeight,
+        1,
+        100
+      ); // create a perspective camera with a 45 degree field of view, an aspect ratio of the window's aspect ratio, a near clipping plane of 1, and a far clipping plane of 100
+
+      camera.position.set(0, 0, 10);
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+
+        camera.updateProjectionMatrix();
+
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }); // this event listener will update the camera's aspect ratio and the renderer's size when the window is resized
+
+      let scene = new THREE.Scene();
+
+      scene.add(camera);
+
+      // ==========================================================
+      // ======================== Relevant Code ========================
+      // ==========================================================
+
+      // ==================== Assignment Requirements ====================
+      // Does the program output produce a polygon with five vertices?
+      // Does the polygon have a red or blue surface?
+      // Does the program demonstrate the ability to rotate (spin about its x- and y-axis)
+      // Does the polygon rotate around the y-axis?
+      // Is the JavaScript / Three.js code well documented?
+
+      let pentagonGeometry = new THREE.ShapeGeometry(
+        new THREE.Shape([
+          new THREE.Vector2(-1, -1),
+          new THREE.Vector2(-1, 1),
+          new THREE.Vector2(0, 0),
+          new THREE.Vector2(1, 1),
+          new THREE.Vector2(1, -1),
+        ])
+      ); // create a pentagon geometry using the ShapeGeometry class and the Shape class
+
+      let pentagonMaterial = new THREE.MeshBasicMaterial({
+        color: 0x0000ff,
+        side: THREE.DoubleSide,
+      }); // make the pentagon blue and render both sides of the pentagon so that it is visible from any angle
+
+      let pentagon = new THREE.Mesh(pentagonGeometry, pentagonMaterial);
+
+      scene.add(pentagon);
+
+      function update() {
+        pentagon.rotation.x += 0.01; // rotate the pentagon 0.01 radians around the x-axis
+        pentagon.rotation.y += 0.01; // rotate the pentagon 0.01 radians around the y-axis
+      }
+
+      // ==========================================================
+      // ======================== End Relevant Code =====================
+      // ==========================================================
+
+      function render() {
+        renderer.render(scene, camera); // render the scene from the perspective of the camera
+      }
+
+      function animate() {
+        update(); // update the pentagon's rotation
+        render(); // render the scene
+        requestAnimationFrame(animate); // request the next frame
+      }
+
+      animate(); // start the animation
+    </script>
+  </body>
+</html>
