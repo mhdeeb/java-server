@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+  <!-- this attribute specifies the language of the document -->
+  <head>
+    <meta charset="UTF-8" />
+    <!-- this meta tag is used to specify the character encoding for the HTML document -->
+    <meta
+      name="viewport"
+      content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0"
+    />
+    <!-- this meta tag is used to make the content of the page responsive to the size of the device's screen -->
+    <title>CS4406 Computer Graphics - Discussion Forum #2</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <!-- include the three.js library -->
+  </head>
+  <body style="margin: 0; display: flex">
+    <script>
+      let renderer = new THREE.WebGLRenderer({ antialias: true }); // anti aliasing is a technique used to improve the quality of the image produced by the renderer
+
+      renderer.setPixelRatio(window.devicePixelRatio); // this insures that the quality of the image produced by the renderer is consistent across different devices.
+
+      renderer.setSize(window.innerWidth, window.innerHeight); // set the size of the renderer to the size of the window
+
+      document.body.appendChild(renderer.domElement); // add the renderer to the body of the document
+
+      let camera = new THREE.PerspectiveCamera(
+        45,
+        window.innerWidth / window.innerHeight,
+        1,
+        100
+      ); // create a perspective camera with a 45 degree field of view, an aspect ratio of the window's aspect ratio, a near clipping plane of 1, and a far clipping plane of 100
+
+      camera.position.set(0, 0, 10);
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+
+        camera.updateProjectionMatrix();
+
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }); // this event listener will update the camera's aspect ratio and the renderer's size when the window is resized
+
+      let scene = new THREE.Scene();
+
+      scene.add(camera);
+
+      // ==========================================================
+      // ======================== Relevant Code ========================
+      // ==========================================================
+
+      class Mesh extends THREE.Mesh {
+        constructor(parameters) {
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute(
+            "position",
+            new THREE.BufferAttribute(new Float32Array(parameters.array), 3)
+          ); // create a buffer attribute for the position of the vertices of the mesh
+
+          const material = new THREE.MeshBasicMaterial({
+            color: parameters.color,
+            side: THREE.DoubleSide,
+          }); // create a material for the mesh
+
+          super(geometry, material);
+        }
+      }
+
+      class Mesh2D extends Mesh {
+        constructor(parameters) {
+          const newArray = new Array((parameters.array.length / 2) * 3);
+
+          for (let i = 0; i < parameters.array.length / 2; i++) {
+            newArray[i * 3] = parameters.array[i * 2];
+            newArray[i * 3 + 1] = parameters.array[i * 2 + 1];
+            newArray[i * 3 + 2] = 0;
+          } // convert the 2D array to a 3D array
+          
+          parameters.array = newArray;
+          
+          super(parameters);
+        }
+      }
+
+      let triangle = new Mesh2D({
+        array: [-1, -1, 0, 1, 1, -1],
+        color: "red",
+      });
+
+      let square = new Mesh2D({
+        array: [
+          1, -1, -1, -1, -1, 1, // Triangle 1
+          1, -1, 1, 1, -1, 1, // Triangle 2
+        ],
+        color: "blue",
+      });
+
+      let cube = new Mesh({
+        array: [
+          -1, -1, 1, 1, -1, 1, 1, 1, 1, // Triangle 1 (front)
+          -1, -1, 1, 1, 1, 1, -1, 1, 1, // Triangle 2 (front)
+          1, -1, 1, 1, -1, -1, 1, 1, -1, // Triangle 3 (right)
+          1, -1, 1, 1, 1, -1, 1, 1, 1, // Triangle 4 (right)
+          1, -1, -1, -1, -1, -1, -1, 1, -1, // Triangle 5 (back)
+          1, -1, -1, -1, 1, -1, 1, 1, -1, // Triangle 6 (back)
+          -1, -1, -1, -1, -1, 1, -1, 1, 1, // Triangle 7 (left)
+          -1, -1, -1, -1, 1, 1, -1, 1, -1, // Triangle 8 (left)
+          -1, 1, 1, 1, 1, 1, 1, 1, -1, // Triangle 9 (top)
+          -1, 1, 1, 1, 1, -1, -1, 1, -1, // Triangle 10 (top)
+          1, -1, 1, -1, -1, -1, 1, -1, -1, // Triangle 11 (bottom)
+          1, -1, 1, -1, -1, 1, -1, -1, -1, // Triangle 12 (bottom)
+        ],
+        color: "green",
+      });
+
+      var wireframe = new THREE.LineSegments(
+        new THREE.WireframeGeometry(cube.geometry),
+        new THREE.LineBasicMaterial({ color: 0xffffff })
+      ); // create a wireframe of the cube
+
+      cube.add(wireframe); // add the wireframe to the cube
+
+      triangle.translateX(-3); // move the triangle to the left
+      cube.translateX(3); // move the cube to the right
+
+      scene.add(triangle); // add the triangle to the scene
+      scene.add(square); // add the square to the scene
+      scene.add(cube); // add the cube to the scene
+
+      function update() {
+        // update the rotation of the triangle, square, and cube
+        triangle.rotation.x += 0.01;
+        square.rotation.y += 0.01;
+        cube.rotation.x += 0.01;
+        cube.rotation.z += 0.01;
+      }
+
+      // ==========================================================
+      // ======================== End Relevant Code =====================
+      // ==========================================================
+
+      function render() {
+        renderer.render(scene, camera); // render the scene from the perspective of the camera
+      }
+
+      function animate() {
+        update(); // update the pentagon's rotation
+        render(); // render the scene
+        requestAnimationFrame(animate); // request the next frame
+      }
+
+      animate(); // start the animation
+    </script>
+  </body>
+</html>
