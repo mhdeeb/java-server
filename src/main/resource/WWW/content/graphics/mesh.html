@@ -86,6 +86,16 @@
         color: "red",
       });
 
+      let lineMaterial = new THREE.LineBasicMaterial({ color: "white", linewidth: 2 });
+
+      let triangleWireframe = new THREE.LineSegments(
+        new THREE.WireframeGeometry(triangle.geometry),
+        lineMaterial
+
+      ); // create a wireframe of the triangle
+
+      triangle.add(triangleWireframe); // add the wireframe to the triangle
+
       let square = new Mesh2D({
         array: [
           1, -1, -1, -1, -1, 1, // Triangle 1
@@ -93,6 +103,13 @@
         ],
         color: "blue",
       });
+
+      let squareWireframe = new THREE.LineSegments(
+        new THREE.WireframeGeometry(square.geometry),
+        lineMaterial
+      ); // create a wireframe of the square
+
+      square.add(squareWireframe); // add the wireframe to the square
 
       let cube = new Mesh({
         array: [
@@ -112,12 +129,12 @@
         color: "green",
       });
 
-      var wireframe = new THREE.LineSegments(
+      var cubeWireframe = new THREE.LineSegments(
         new THREE.WireframeGeometry(cube.geometry),
-        new THREE.LineBasicMaterial({ color: 0xffffff })
+        lineMaterial
       ); // create a wireframe of the cube
 
-      cube.add(wireframe); // add the wireframe to the cube
+      cube.add(cubeWireframe); // add the wireframe to the cube
 
       triangle.translateX(-3); // move the triangle to the left
       cube.translateX(3); // move the cube to the right
