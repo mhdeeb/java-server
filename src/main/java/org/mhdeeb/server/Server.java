@@ -28,7 +28,6 @@ import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -81,7 +80,7 @@ public class Server {
 
 	public static Path resourceDirectory = Path.of("./");
 
-	private static CodeResolver codeResolver = null;;
+	private static CodeResolver codeResolver = null;
 	private static TemplateEngine templateEngine = null;
 
 	private static final String CRLF = "\r\n";
@@ -939,7 +938,7 @@ public class Server {
 						} else {
 							String etag = getETag(file);
 							if (request.getHeader().containsKey("If-None-Match")
-									&& request.getHeader().get("If-None-Match").equals(etag)) {
+									&& request.getHeader().get("If-None-Match")[0].equals(etag)) {
 								sendNotModifiedResponse(request.getOut(), etag);
 							} else {
 								send(200, request.getOut(), file, etag);
@@ -1060,7 +1059,7 @@ public class Server {
 		} catch (java.net.SocketException e) {
 			logger.error("Socket exception occurred - killing connection");
 
-			logger.error(e.getMessage());
+			logger.error(e.getStackTrace());
 		} catch (IOException e) {
 			logger.error("I/O error occurred - killing connection");
 		} finally {
