@@ -10,11 +10,11 @@
     />
     <!-- this meta tag is used to make the content of the page responsive to the size of the device's screen -->
     <title>CS4406 Computer Graphics - Discussion Forum #2</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
-    <!-- include the three.js library -->
   </head>
   <body style="margin: 0; display: flex">
-    <script>
+    <script type="module">
+      import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.min.js"; // include the three.js library
+
       let renderer = new THREE.WebGLRenderer({ antialias: true }); // anti aliasing is a technique used to improve the quality of the image produced by the renderer
 
       renderer.setPixelRatio(window.devicePixelRatio); // this insures that the quality of the image produced by the renderer is consistent across different devices.
@@ -74,9 +74,9 @@
             newArray[i * 3 + 1] = parameters.array[i * 2 + 1];
             newArray[i * 3 + 2] = 0;
           } // convert the 2D array to a 3D array
-          
+
           parameters.array = newArray;
-          
+
           super(parameters);
         }
       }
@@ -86,12 +86,14 @@
         color: "red",
       });
 
-      let lineMaterial = new THREE.LineBasicMaterial({ color: "white", linewidth: 2 });
+      let lineMaterial = new THREE.LineBasicMaterial({
+        color: "white",
+        linewidth: 2,
+      });
 
       let triangleWireframe = new THREE.LineSegments(
         new THREE.WireframeGeometry(triangle.geometry),
         lineMaterial
-
       ); // create a wireframe of the triangle
 
       triangle.add(triangleWireframe); // add the wireframe to the triangle
